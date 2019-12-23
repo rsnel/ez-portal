@@ -1,0 +1,47 @@
+.flex-wrapper {
+  margin-left: .5em;
+  margin-right: .5em;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  justify-content: space-between;
+}
+body {
+	text-size: small;
+	margin: 0;
+}
+.debug {
+	display: none;
+}
+div.tablemarkup > table {
+        border-collapse: collapse;
+        border: 1px solid black;
+}
+div.tablemarkup > table * td, div.tablemarkup > table * th {
+        padding-top: 1.1mm;
+        padding-bottom: 1.1mm;
+        padding-left: 1.1mm;
+        padding-right: 1.1mm;
+        border: 1px solid black
+}
+#footer {
+	font-size: xx-small;
+	border-top: 2px solid #ccc;
+	border-bottom: 2px solid #ccc;
+	margin-top: 15px;
+	margin-bottom: 5px;
+}
+#footerlogo {
+	padding-top: .3ex;
+	padding-bottom: .3ex;
+	float: left;
+}
+#footerlogo img {
+	height: 6.9ex;
+}
+#footertext {
+	float: left;
+	padding-left: .5em;
+	padding-top: .3ex;
+	padding-bottom: .3ex;
+}

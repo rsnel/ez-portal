@@ -1,0 +1,4 @@
+config_*.php
+!config_SAMPLE.php
+test_ovc.php
+.*.swp
