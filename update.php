@@ -5,7 +5,7 @@ require_once('common.php');
 require_once('zportal.php');
 
 $sisyinfo = get_sisyinfo();
-//set_random_token($sisyinfo);
+set_random_token($sisyinfo);
 
 $sanity = db_all_assoc_rekey(<<<EOQ
 SELECT entity_name, COUNT(entity_id) clash FROM entities GROUP BY entity_name HAVING clash > 1
@@ -23,14 +23,14 @@ if (count($sanity) > 0) {
 //update_holidays();
 //echo("updating users\n");
 //update_users();
-//echo("updating categories\n");
-//update_categories();
+echo("updating categories\n");
+update_categories();
 //echo("updating groups\n");
 //update_groups();
-//echo("updating rooms\n");
-//update_rooms();
-echo("updating weeks\n");
-update_weeks($sisyinfo);
+echo("updating rooms\n");
+update_rooms();
+//echo("updating weeks\n");
+//update_weeks($sisyinfo);
 
 /*
 //print_r($sisyinfo);

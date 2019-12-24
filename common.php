@@ -2,6 +2,7 @@
 
 $config_defaults = array(
 	'STRIP_CATEGORIE_OF_STAMKLAS' => 'false',
+	'MAX_LESUUR' => '9',
 	'NAMES_BUG' => 'none',
 	'TIMEZONE' => 'Europe/Amsterdam'
 );
@@ -263,7 +264,7 @@ function update_categories() {
 	$categories = zportal_GET_data('departmentsofbranches', 'schoolInSchoolYear', config('SISY'), 'fields', 'id,code');
 	foreach ($categories as $categorie) {
 		$entity_id = db_get_entity_id(dereference($categorie, 'code'), 'CATEGORIE');
-		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ? AND entity_zid IS NULL",
+		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ?",
 			dereference($categorie, 'id'), $entity_id);
 	}
 }
@@ -277,7 +278,7 @@ function update_groups() {
 		else $entity_name = dereference($group, 'extendedName');
 
 		$entity_id = db_get_entity_id($entity_name, $isMainGroup?'STAMKLAS':'LESGROEP');
-		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ? AND entity_zid IS NULL",
+		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ?",
 			dereference($group, 'id'), $entity_id);
 	}
 }
@@ -286,7 +287,7 @@ function update_rooms() {
 	$rooms = zportal_GET_data('locationofbranches', 'fields', 'id,name');
 	foreach ($rooms as $room) {
 		$entity_id = db_get_entity_id(dereference($room, 'name'), 'LOKAAL');
-		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ? AND entity_zid IS NULL",
+		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ?",
 			dereference($room, 'id'), $entity_id);
 	}
 }

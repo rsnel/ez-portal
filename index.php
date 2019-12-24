@@ -20,6 +20,8 @@ instelling: ovc
 	exit;
 }
 
+require_once('zportal.php');
+zportal_set_access_token($access_info['access_token']);
 $sisyinfo = get_sisyinfo();
 
 // sanitize input
@@ -117,7 +119,10 @@ case 'CATEGORIE':
 	$type = 'categorie '.$entity_name;
 	break;
 case 'LOKAAL':
+	print_r($result);
+	echo("thismonday=$thismonday, nextmonday=".($thismonday+7*24*60*60));
 	$type = 'lokaal '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday, 'end', $thismonday + 7*24*60*60, 'locationsOfBranch', $result['entity_zid']);
 	break;
 case 'VAK':
 	$type = 'vak '.$entity_name;
@@ -198,7 +203,11 @@ EOS
 		if ($bw == 'b') echo('Basisrooster');
 		else echo('Weekrooster');
 		?> van <? echo($type.'.');
-	} ?>
+	} 
+	if (isset($appointments)) { ?>
+		<pre><? print_r($appointments); ?></pre>
+<? }
+?>
 <p><table id="rooster"><tr><th></th>
 <th>ma <? echo date("j-n", $thismonday)          ?></th>
 <th>di <? echo date("j-n", $thismonday +  86400) ?></th>
@@ -206,6 +215,13 @@ EOS
 <th>do <? echo date("j-n", $thismonday + 259200) ?></th>
 <th>vr <? echo date("j-n", $thismonday + 345600) ?></th>
 </tr>
+<? for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
+<tr class="spacer"><td><?=$i?></td>
+<? for ($j = 1; $j <= 5; $j++) { ?>
+<td></td>
+<? } ?>
+</tr>
+<? }?>
 </table>
 <div class="noprint small">Kleurcodes:
 <span class="legenda uitval">&nbsp;</span>&nbsp;uitval,
@@ -213,7 +229,7 @@ EOS
 <span class="legenda extra">&nbsp;</span>&nbsp;nieuw,
 <span class="legenda verplaatstvan">&nbsp;</span>&nbsp;verplaatst van,
 <span class="legenda verplaatstnaar">&nbsp;</span>&nbsp;verplaatst naar,
-<span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling,
+<span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling.
 </div>
 <? 
 }
