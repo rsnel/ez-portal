@@ -28,34 +28,31 @@ $access_token = dereference($json, 'access_token');
 
 zportal_set_access_token($access_token);
 
-/* so, let's see if it works */
+/* so, let's see if the token is accepted by the API */
 
 $tokeninfo = zportal_GET_row('tokens/~current');
 
-$user = dereference($tokeninfo, 'user');
+$entity_name = dereference($tokeninfo, 'user');
 
 $expires = dereference($tokeninfo, 'expires');
 
 set_access_token_cookie($expires, $access_token);
 
-$userinfo = zportal_GET_row('users/~me');
-
 /* add info to database */
-
-$code = dereference($userinfo, 'code');
-
-if ($code != $user) fatal("user from tokens/~current should match code from users/~me, but it doesn't");
-
-$isStudent = dereference($userinfo, 'isStudent');
-$isEmployee = dereference($userinfo, 'isEmployee');
-$isFamilyMember = dereference($userinfo, 'isFamilyMember');
+$entity_id = db_get_entity_id($entity_name, 'PERSOON');
 
 db_exec(<<<EOQ
-INSERT INTO access ( access_token, access_code, access_isStudent,
-	access_isEmployee, access_isFamilyMember )
-VALUES ( ?, ?, ?, ?, ? )
+INSERT INTO access ( access_token, entity_id, access_expires ) VALUES ( ?, ?, FROM_UNIXTIME(?) )
 EOQ
-, $access_token, $code, $isStudent, $isEmployee, $isFamilyMember);
+, $access_token, $entity_id, $expires);
+
+$userinfo = zportal_GET_row('users/~me');
+
+if (dereference($userinfo, 'code') != $entity_name)
+	fatal("user from tokens/~current should match code from users/~me, but it doesn't");
+
+/* add name and roles to users table */
+update_user($userinfo);
 
 header('Location: https://'.$_SERVER['HTTP_HOST'].'/');
 

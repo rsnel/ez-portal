@@ -1,7 +1,8 @@
 <?php
 
-function html_start($script = '') {
+function html_start($title = '', $script = '') {
 	global $voxdb;
+	if ($title != '') $title .= ' - ';
 ?>
 <!DOCTYPE html>
 <html>
@@ -24,7 +25,7 @@ function html_start($script = '') {
 </script>
 <?php } ?>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ez-roosterbord</title>
+<title><?=$title?> ez-roosterbord</title>
 </head>
 <body>
 <div class="flex-wrapper">
