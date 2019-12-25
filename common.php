@@ -270,7 +270,8 @@ function update_categories() {
 }
 
 function update_groups() {
-	$groups = zportal_GET_data('groupindepartments');
+	$departments = db_single_field("SELECT GROUP_CONCAT(entity_zid) FROM entities WHERE entity_type = 'CATEGORIE'");
+	$groups = zportal_GET_data('groupindepartments', 'departmentOfBranch', $departments);
 	foreach ($groups as $group) {
 		$isMainGroup = dereference($group, 'isMainGroup');
 		if ($isMainGroup && config('STRIP_CATEGORIE_OF_STAMKLAS'))
@@ -284,11 +285,24 @@ function update_groups() {
 }
 
 function update_rooms() {
-	$rooms = zportal_GET_data('locationofbranches', 'fields', 'id,name');
+	$sisy_id = db_get_id('sisy_id', 'sisys', 'sisy_zid', config('SISY'));
+	$bos_zid = db_single_field('SELECT bos_zid FROM boss WHERE sisy_id = ?', $sisy_id);
+	$rooms = zportal_GET_data('locationofbranches', 'branch', $bos_zid, 'fields', 'id,name');
 	foreach ($rooms as $room) {
 		$entity_id = db_get_entity_id(dereference($room, 'name'), 'LOKAAL');
 		db_exec("UPDATE entities SET entity_zid = ? WHERE entity_id = ?",
 			dereference($room, 'id'), $entity_id);
+	}
+}
+
+function update_boss() {
+	$boss = zportal_GET_data('branchesofschools');
+	foreach ($boss as $bos) {
+		$sisy_id = db_get_id('sisy_id', 'sisys',
+			'sisy_zid', dereference($bos, 'schoolInSchoolYear'));
+		$bos_id = db_get_id('bos_id', 'boss', 'bos_zid', dereference($bos, 'id'));
+		db_exec("UPDATE boss SET sisy_id = ?, bos_name = ? WHERE bos_id = ?",
+			$sisy_id, htmlenc(dereference($bos, 'name')), $bos_id);
 	}
 }
 
@@ -298,7 +312,7 @@ function get_access_info() {
 		$access_token = $_COOKIE['access_token'];
 
 		/* do we know this token? */
-		$access_info = db_single_row("SELECT * FROM access WHERE access_token = ?",
+		$access_info = db_single_row("SELECT * FROM access JOIN entities USING (entity_id) WHERE access_token = ?",
 				$access_token);
 
 		if ($access_info === NULL) {
@@ -370,4 +384,21 @@ function update_weeks($sisyinfo) {
 	} while(1);
 }
 
+function isodayname($day_number) {
+	static $days = array ( 1 => 'ma', 2 => 'di', 3 => 'wo', 4 => 'do', 5 => 'vr');
+	return dereference($days, $day_number);
+}
+
+// warn when there are doubly named things
+function check_doubles() {
+	$doubles = db_all_assoc_rekey(<<<EOQ
+SELECT entity_name, COUNT(entity_id) clash FROM entities GROUP BY entity_name HAVING clash > 1
+EOQ
+	);
+
+	if (count($doubles) > 0) {
+		echo("warming, some names appear double in entities list, see here:\n");
+		print_r($doubles);
+	}
+}
 ?>

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 24, 2019 at 08:30 PM
+-- Generation Time: Dec 25, 2019 at 02:10 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -33,6 +33,19 @@ CREATE TABLE `access` (
   `access_refreshed` timestamp NOT NULL DEFAULT current_timestamp(),
   `access_expires` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `boss`
+--
+
+CREATE TABLE `boss` (
+  `bos_id` int(11) NOT NULL,
+  `bos_zid` int(11) NOT NULL,
+  `sisy_id` int(11) NOT NULL,
+  `bos_name` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -151,6 +164,13 @@ ALTER TABLE `access`
   ADD KEY `entity_id` (`entity_id`);
 
 --
+-- Indexes for table `boss`
+--
+ALTER TABLE `boss`
+  ADD PRIMARY KEY (`bos_id`),
+  ADD UNIQUE KEY `bos_zid` (`bos_zid`);
+
+--
 -- Indexes for table `config`
 --
 ALTER TABLE `config`
@@ -204,6 +224,11 @@ ALTER TABLE `weeks`
 --
 ALTER TABLE `access`
   MODIFY `access_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `boss`
+--
+ALTER TABLE `boss`
+  MODIFY `bos_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `config`
 --

@@ -17,6 +17,7 @@ table#rooster {
         width: 100%;
         border-collapse: collapse;
         border: 1px solid black;
+	table-layout: fixed;
 }
 table#rooster th {
         border: 1px solid black;
@@ -25,15 +26,18 @@ table#rooster > tbody > tr {
         vertical-align: top;
 }
 table#rooster > tbody >tr > td {
-        width: 20%;
+        /*width: 19%;*/
         border: 1px solid black;
+}
+#rooster > tbody > tr > td:not(:first-child), #rooster > tbody > tr > th:not(:first-child) {
+	width: 20.0%;
 }
 table#rooster > tbody >tr > td.single {
         width: 100%;
         border: 1px solid black;
 }
-#rooster td:first-child {
-        width: 0%;
+#rooster > tbody > tr > td:first-child, #rooster > tbody > tr > th:first-child {
+        width: .6em;
 }
 div.les {
         border-top: 1px solid #989898;

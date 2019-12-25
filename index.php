@@ -29,7 +29,7 @@ if (!isset($_GET['bw']) || ( $_GET['bw'] != 'w' && $_GET['bw'] != 'b' )) $_GET['
 
 $bw = $_GET['bw'];
 
-// now + maandag - vrijdag eind van het 9e uur
+// now + maandag - vrijdag eind van het 9e uur (16:50 op het ovc)
 $offset = $_SERVER['REQUEST_TIME'] + 2*24*60*60 + (10 + 7*60)*60;
 $current_week = date('W', $offset);
 $current_year = date('o', $offset);
@@ -82,14 +82,15 @@ else $link_tail = $link_tail_wowk;
 
 $link_tail .= $link_tail_tail.'">';
 
-if (!isset($_GET['q'])) $_GET['q'] = '';
+// show rooster of the owner of the token by default
+if (!isset($_GET['q'])) $_GET['q'] = $access_info['entity_name'];
 else $_GET['q'] = trim($_GET['q']);
 
 $qs = explode(',', $_GET['q']);
 
 if (count($qs) > 1) fatal("multiple search terms currently not supported");
 
-$result = db_single_row("SELECT * FROM entities WHERE entity_name = ?", $qs[0]);
+$result = db_single_row("SELECT * FROM entities WHERE entity_name = ? AND entity_type != 'VAK'", $qs[0]);
 if (!$result) {
 	$safe_id = '';
 	$entity_type = '';
@@ -98,8 +99,8 @@ if (!$result) {
 	$res_klas = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'STAMKLAS' AND entity_visible ORDER BY entity_name");
 	$res_doc = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities JOIN users USING (entity_id) WHERE entity_type = 'PERSOON' AND isEmployee AND entity_visible ORDER BY entity_name");
 	$res_lok = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'LOKAAL' AND entity_visible ORDER BY entity_name");
-	//$res_vak = db_all_assoc_rekey("SELECT entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible");
 	$res_cat = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'CATEGORIE' AND entity_visible ORDER BY entity_name");
+	//$res_vak = db_all_assoc_rekey("SELECT entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible");
 
 	goto cont;
 }
@@ -108,28 +109,45 @@ $entity_type = $result['entity_type'];
 $entity_name = $result['entity_name'];
 $safe_id = $result['entity_id'];
 
+$fields = 'id,appointmentInstance,start,startTimeSlot,endTimeSlot,teachers,groups,locations,valid,cancelled,new,changeDescription,subjects,teacherChanged,groupChanged,locationChanged,timeChanged,students,schedulerRemark,modified,moved';
+
 switch ($entity_type) {
 case 'LESGROEP':
 	$type = 'lesgroep '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
+		'end', $thismonday + 7*24*60*60, 'schoolInSchoolYear', config('SISY'),
+		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'STAMKLAS':
 	$type = 'klas'.$entity_name;
+	$type = 'lesgroep '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
+		'end', $thismonday + 7*24*60*60, 'schoolInSchoolYear', config('SISY'),
+		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'CATEGORIE':
 	$type = 'categorie '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
+		'end', $thismonday + 7*24*60*60, 'departmentOfBranch', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'LOKAAL':
-	print_r($result);
-	echo("thismonday=$thismonday, nextmonday=".($thismonday+7*24*60*60));
+	//print_r($result);
+	//echo("thismonday=$thismonday, nextmonday=".($thismonday+7*24*60*60));
 	$type = 'lokaal '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday, 'end', $thismonday + 7*24*60*60, 'locationsOfBranch', $result['entity_zid']);
-	break;
-case 'VAK':
-	$type = 'vak '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
+		'end', $thismonday + 7*24*60*60, 'locationsOfBranch', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'PERSOON':
 	$type = $entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
+		'end', $thismonday + 7*24*60*60, 'user', $result['entity_name'], 'type', 'lesson', 'fields', $fields);
 	break;
+	/* not supported by zermelo api (if requesting as normal user, at least)
+case 'VAK':
+	$type = 'vak '.$entity_name;
+	$appointments = zportal_GET_data('appointments', 'start', $thismonday, 'end', $thismonday + 7*24*60*60, 'subjects', 'wisa');
+	break;
+	 */
 default:
 	fatal('onmogelijk type');
 }
@@ -139,6 +157,42 @@ cont:
 function make_link($target, $text = NULL) {
 	global $link_tail, $link_tail_tail;
 	return '<a href="?q='.urlencode($target).$link_tail.($text?$text:htmlenc($target)).'</a>';
+}
+
+function enccommabr($string) {
+        return implode('<br>', explode(',', htmlenc($string)));
+}
+
+function vakmatch($vak, $match) {
+	return preg_match("/\.{$vak}[0-9]\$/", $match);
+}
+
+
+function add(&$info, $name, $void = '') {
+        global $entity_name;
+        if ($name == $entity_name) return;
+        if ($name == '') {
+                if ($void) $info[] = $void;
+        } else $info[] = make_link($name, enccommabr($name));
+
+}
+
+function add_lv(&$info, $lesgroepen, $vak) {
+        global $entity_type, $entity_multiple;
+        if ($entity_type == LEERLING && !$entity_multiple) {
+                if ($vak != '') $info[] = enccommabr($vak);
+        } else {
+                add($info, $lesgroepen);
+                // we laten het vak alleen zien als het niet in de naam van de lesgroep zit
+                if ($vak != '') {
+                        foreach (explode(',', $vak) as $v) {
+                                if (!vakmatch($v, $lesgroepen)) {
+                                        $info[] = enccommabr($vak);
+                                        break;
+                                }
+                        }
+                }
+        }
 }
 
 html_start(dereference($sisyinfo, 'sisy_name'), <<<EOS
@@ -179,7 +233,7 @@ EOS
 <? } ?>
 <select autocomplete="off" name="bw">
 <option <?=($bw == 'b')?'selected ':''?>value="b">basisrooster</option>
-<option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>
+<!--<option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>-->
 </select>
 <input name="q" type="hidden" value="<? echo(htmlenc($_GET['q'])) ?>">
 </form>
@@ -204,9 +258,41 @@ EOS
 		else echo('Weekrooster');
 		?> van <? echo($type.'.');
 	} 
-	if (isset($appointments)) { ?>
-		<pre><? print_r($appointments); ?></pre>
-<? }
+	$totable = array();
+	if (isset($appointments)) foreach ($appointments as $appointment) {
+
+		$uur = dereference($appointment, 'startTimeSlot');
+		if ($uur != dereference($appointment, 'endTimeSlot')) fatal('start and end timeslot not the same for lesson');
+		$day_number = date('N', dereference($appointment, 'start'));
+		$sort = $uur.$day_number;
+		$dag = isodayname($day_number);
+		$valid = dereference($appointment, 'valid');
+		$cancelled = dereference($appointment, 'cancelled');
+		$modified = dereference($appointment, 'modified');
+		$moved = dereference($appointment, 'moved');
+		//$timeChanged = $appointment['timeChanged']; //dereference($appointment, 'timeChanged');
+		//$locationChanged = dereference($appointment, 'locationChanged');
+		//$groupChanged = dereference($appointment, 'groupChanged');
+		//$teacherChanged = dereference($appointment, 'teacherChanged');
+		if (!($modified||$moved/*$timeChanged||$locationChanged||$groupChanged||$teacherChanged*/)) {
+			
+			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
+			sort($appointment['teachers']);
+			$totable[$sort][] = array (
+				'dag' => $dag,
+				'uur' => $uur,
+				'groups' => implode(',',$appointment['groups']),
+				'subjects' => implode(',',$appointment['subjects']),
+				'teachers' => implode(',',$appointment['teachers']),
+				'locations' => implode(',',$appointment['locations'])
+			);
+		}
+		
+
+?>
+	<!--<pre><?=$appointment['appointmentInstance'].'-'.$appointment['id'].'-'.$uur.$day_number.'-'.$dag.$uur.'-'.implode(',',$appointment['groups']).'-'.implode(',',$appointment['subjects']).'-'.implode(',',$appointment['teachers']).'-'.implode(',',$appointment['locations']).'-'.($appointment['valid']?'valid':'notvalid').'-'.($appointment['cancelled']?'cancelled':'notcancelled')?><? print_r($appointment); ?></pre>-->
+<? 	}
+ksort($totable);
 ?>
 <p><table id="rooster"><tr><th></th>
 <th>ma <? echo date("j-n", $thismonday)          ?></th>
@@ -218,11 +304,25 @@ EOS
 <? for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
 <tr class="spacer"><td><?=$i?></td>
 <? for ($j = 1; $j <= 5; $j++) { ?>
-<td></td>
-<? } ?>
+<td><?
+$key = $i.$j;
+if (!array_key_exists($key, $totable)) continue;
+foreach($totable[$key] as $les) {
+	$info = array();
+	add_lv($info, $les['groups'], $les['subjects']);
+	add($info, $les['teachers']);
+	add($info, $les['locations']);
+	echo('<div class="les'.$extra.'">');
+	if (count($info)) echo('<table><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
+	echo('<div class="clear"></div></div>');
+	//print_r($les);
+}
+?></td>
+<?php } ?>
 </tr>
-<? }?>
+<?php }?>
 </table>
+<?php if (false && $bw == 'w') { ?>
 <div class="noprint small">Kleurcodes:
 <span class="legenda uitval">&nbsp;</span>&nbsp;uitval,
 <span class="legenda gewijzigd">&nbsp;</span>&nbsp;gewijzigd,
@@ -231,24 +331,13 @@ EOS
 <span class="legenda verplaatstnaar">&nbsp;</span>&nbsp;verplaatst naar,
 <span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling.
 </div>
-<? 
+<?php }
 }
 ?>
 
-<p>toegang tot het roosterbord als <?=db_single_field("SELECT entity_name FROM entities JOIN access USING (entity_id) WHERE access_id = ?", $access_info['access_id'])?> <a href="forget_access_token.php">[cookie verwijderen]</a> (na het vergeten van het cookie, moet je opnieuw een koppelcode maken en invoeren om toegang te krijgen tot het roosterbord)
+<p>
+<span id="updateinfo">
+Je browser heeft een cookie, waarmee je autmatisch toegang hebt tot het roosterbord als <?=$access_info['entity_name']?>. Als je het cookie verwijdert, dan moet je opniew een koppelcode invoeren om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie verwijderen]</a>
+</span>
 
-<p>Meer functionaliteit (naast het koppelen met de koppelcode), zoals het tonen van het rooster, is nog niet geimplementeerd.
-
-<?php
-
-html_end();
-
-//print_r($_SERVER);
-
-//print_r($_COOKIE);
-
-//setcookie('auth_token', 'bla', time() - 3600, '/', $_SERVER['HTTP_HOST'], true, true);
-
-//setcookie('auth_token', 'bladibla');
-
-?>
+<?php html_end(); ?>
