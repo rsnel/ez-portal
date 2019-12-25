@@ -149,7 +149,7 @@ function update_user($userinfo) {
 	$entity_name = htmlenc(dereference($userinfo, 'code'));
 
 	$entity_id = db_get_id('entity_id', 'entities',
-		'entity_name', $entity_name, 'entity_type', 'PERSON');
+		'entity_name', $entity_name, 'entity_type', 'PERSOON');
 
 	$user_id = db_get_id('user_id', 'users', 'entity_id', $entity_id);
 
