@@ -179,7 +179,7 @@ function add(&$info, $name, $void = '') {
 
 function add_lv(&$info, $lesgroepen, $vak) {
         global $entity_type, $entity_multiple;
-        if ($entity_type == LEERLING && !$entity_multiple) {
+        if ($entity_type == 'LEERLING' && !$entity_multiple) {
                 if ($vak != '') $info[] = enccommabr($vak);
         } else {
                 add($info, $lesgroepen);
@@ -270,11 +270,12 @@ EOS
 		$cancelled = dereference($appointment, 'cancelled');
 		$modified = dereference($appointment, 'modified');
 		$moved = dereference($appointment, 'moved');
-		//$timeChanged = $appointment['timeChanged']; //dereference($appointment, 'timeChanged');
-		//$locationChanged = dereference($appointment, 'locationChanged');
-		//$groupChanged = dereference($appointment, 'groupChanged');
-		//$teacherChanged = dereference($appointment, 'teacherChanged');
-		if (!($modified||$moved/*$timeChanged||$locationChanged||$groupChanged||$teacherChanged*/)) {
+		$new = dereference($appointment, 'new');
+		// the fields timeChanged, locationChanged, groupChanged, teacherChanged
+		// are not always available (for example, while looking at appointments
+		// in the context of locations, so we will just use modified and moved
+
+		if (!($modified||$moved) || $cancelled) {
 			
 			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
 			sort($appointment['teachers']);
@@ -286,7 +287,7 @@ EOS
 				'teachers' => implode(',',$appointment['teachers']),
 				'locations' => implode(',',$appointment['locations'])
 			);
-		}
+		} /*else { ?><pre><?print_r($appointment); ?></pre> <? } */
 		
 
 ?>
@@ -312,7 +313,8 @@ foreach($totable[$key] as $les) {
 	add_lv($info, $les['groups'], $les['subjects']);
 	add($info, $les['teachers']);
 	add($info, $les['locations']);
-	echo('<div class="les'.$extra.'">');
+	echo('<div class="les">');
+	//echo('<div class="les'.$extra.'">');
 	if (count($info)) echo('<table><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
 	echo('<div class="clear"></div></div>');
 	//print_r($les);
@@ -337,7 +339,7 @@ foreach($totable[$key] as $les) {
 
 <p>
 <span id="updateinfo">
-Je browser heeft een cookie, waarmee je autmatisch toegang hebt tot het roosterbord als <?=$access_info['entity_name']?>. Als je het cookie verwijdert, dan moet je opniew een koppelcode invoeren om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie verwijderen]</a>
+Je browser heeft een cookie waarmee je autmatisch toegang hebt tot het roosterbord als <?=$access_info['entity_name']?>. Als je het cookie verwijdert, dan moet je opniew een koppelcode invoeren om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie verwijderen]</a>
 </span>
 
 <?php html_end(); ?>

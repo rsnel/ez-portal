@@ -8,4 +8,4 @@
 
 - in group view, no list of students is displayed
 
-- basisrooster broken, weekrooster not implemented
+- weekrooster not implemented
