@@ -59,7 +59,7 @@ function zportal_json($url) {
 
 	if (!($httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE))) fatal_curl();
 
-	if ($httpcode != 200) fatal("got HTTP code $httpcode from portal: $ret");
+	if ($httpcode != 200) fatal("got HTTP code $httpcode from portal: $ret, URL: $url");
 
 	if (($json = json_decode($ret, true)) == NULL) fatal("unable to decode JSON data");
 

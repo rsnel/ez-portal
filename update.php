@@ -28,6 +28,7 @@ set_random_token($sisyinfo);
 //echo("updating weeks\n");
 //update_weeks($sisyinfo);
 
+capitalize();
 check_doubles();
 
 /*

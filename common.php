@@ -2,9 +2,11 @@
 
 $config_defaults = array(
 	'STRIP_CATEGORIE_OF_STAMKLAS' => 'false',
+	'DOCFILTER' => 'TRUE',
 	'MAX_LESUUR' => '9',
 	'NAMES_BUG' => 'none',
-	'TIMEZONE' => 'Europe/Amsterdam'
+	'TIMEZONE' => 'Europe/Amsterdam',
+	'CAPITALIZE' => 'none'
 );
 
 // fatal() is for system errors that should not happen during usage
@@ -150,6 +152,9 @@ function update_user($userinfo) {
 
 	$entity_id = db_get_id('entity_id', 'entities',
 		'entity_name', $entity_name, 'entity_type', 'PERSOON');
+
+	if (dereference($userinfo, 'archived'))
+		db_exec('UPDATE entities SET entity_visible = 0 WHERE entity_id = ?', $entity_id);
 
 	$user_id = db_get_id('user_id', 'users', 'entity_id', $entity_id);
 
@@ -389,6 +394,47 @@ function isodayname($day_number) {
 	return dereference($days, $day_number);
 }
 
+
+function master_query($entity_ids, $kind, $rooster_ids) {
+	/* kind must be 'locations', 'groups', 'subjects' or 'teachers' */
+	$kinds = array('locations', 'groups', 'subjects', 'teachers');
+	$idx = array_search($kind, $kinds);
+	if ($idx === false) fatal("illegal value of kind");
+	unset($kinds[$idx]);
+	$join = '';
+	$select = '';
+	$select2 = '';
+	foreach ($kinds as $also) {
+		$join .= <<<EOJ
+JOIN (
+	SELECT egrp_id {$also}_egrp_id, egrp $also FROM egrps
+) AS $also USING ({$also}_egrp_id)
+EOJ;
+		$select .= ", $also.*";
+		$select2 .= ", {$also}_egrp_id";
+	}
+	return db_all_assoc_rekey(<<<EOQ
+SELECT filtered_appointments.*$select, WEEKDAY(appointment_start) + 1 day
+FROM (
+        SELECT appointments.*, egrp $kind$select2
+        FROM appointments
+        LEFT JOIN (
+                SELECT prev_appointment_id appointment_id, appointment_id obsolete
+                FROM appointments
+                WHERE rooster_id IN ( $rooster_ids )
+        ) next_appointments USING ( appointment_id )
+        JOIN agstds USING (agstd_id)
+        JOIN entities2egrps ON entities2egrps.egrp_id = agstds.{$kind}_egrp_id
+        JOIN egrps AS $kind USING (egrp_id)
+        WHERE appointments.rooster_id IN ( $rooster_ids )
+        AND obsolete IS NULL
+        AND entity_id IN ( ? )
+) AS filtered_appointments
+$join
+EOQ
+	, $entity_ids);
+}
+
 // warn when there are doubly named things
 function check_doubles() {
 	$doubles = db_all_assoc_rekey(<<<EOQ
@@ -401,4 +447,100 @@ EOQ
 		print_r($doubles);
 	}
 }
+
+function capitalize_none($name, $type) {
+	return $name;
+}
+
+function capitalize_ovc($name, $type) {
+	switch ($type) {
+	case 'LOKAAL':
+	case 'CATEGORIE':
+	case 'STAMKLAS':
+		return strtoupper($name);
+	case 'PERSOON':
+		// ouder of ln
+		if (preg_match('/v?\d\d\d\d+/', $name)) return strtolower($name);
+		//
+		if (strlen($name) == 4) return strtoupper($name);
+		return strtolower($name);
+	case 'LESGROEP': /* werkt ook voor stamklas */
+		if (!preg_match('/^(.*)\.(.*?)(\d+)?$/', $name, $matches)) return strtoupper($name);
+		return strtoupper($matches[1]).'.'.capitalize_ovc($matches[2], 'VAK').$matches[3];
+	case 'VAK':
+		if (!strcasecmp($name, 'wisA')) return 'wisA';
+		else if (!strcasecmp($name, 'wisB')) return 'wisB';
+		else if (!strcasecmp($name, 'wisC')) return 'wisC';
+		else if (!strcasecmp($name, 'wisD')) return 'wisD';
+		else return strtolower($name);
+	}
+}
+	
+function capitalize_group($name) {
+	return ('capitalize_'.config('CAPITALIZE'))($name, 'LESGROEP');
+}
+
+function capitalize_subject($name) {
+	return ('capitalize_'.config('CAPITALIZE'))($name, 'VAK');
+}
+
+function capitalize_teacher($name) {
+	return ('capitalize_'.config('CAPITALIZE'))($name, 'PERSOON');
+}
+
+function capitalize_location($name) {
+	return ('capitalize_'.config('CAPITALIZE'))($name, 'LOKAAL');
+}
+
+function capitalize() {
+	$value = config('CAPITALIZE');
+	if ($value == 'none') return;
+
+	$entities = db_all_assoc_rekey("SELECT entity_id, entity_name, entity_type FROM entities");
+	foreach ($entities as $entity_id => $entity) {
+		$new = ('capitalize_'.$value)($entity['entity_name'], $entity['entity_type']);
+		if ($new != $entity['entity_name'])
+			db_exec('UPDATE entities SET entity_name = ? WHERE entity_id = ?',
+				$new, $entity_id);
+	}
+}
+
+function search_on_zid($entity_zid) {
+	$out = db_single_field("SELECT entity_name FROM entities WHERE entity_zid = ?",
+		$entity_zid);
+	if (!$out) fatal("entity with entity_zid = $entity_zid not found");
+	return $out;
+}
+
+function search_teacher($entity_name) {
+	return db_get_entity_id(capitalize_teacher($entity_name), 'PERSOON');
+}
+
+function search_subject($entity_name) {
+	return db_get_entity_id('/'.capitalize_subject($entity_name), 'VAK');
+}
+
+function search_on_name($entity_name) {
+	$out = db_single_field("SELECT entity_id FROM entities WHERE entity_name = ?",
+		$entity_name);
+	if (!$out) fatal("entity with entity_zid = $entity_name not found");
+	return $out;
+}
+
+
+function db_get_egrp_id($entities, $search_func) {
+	$egrp_id = db_get_id('egrp_id', 'egrps', 'egrp', $entities);
+
+	if ($entities) foreach (array_map($search_func, explode(',', $entities)) as $entity_id)
+		db_exec('INSERT IGNORE INTO entities2egrps ( entity_id, egrp_id ) VALUES ( ?, ? )',
+                        $entity_id, $egrp_id);
+
+	return $egrp_id;
+}
+ 
+function functionalsort($array) {
+	sort($array);
+	return $array;
+}
+
 ?>

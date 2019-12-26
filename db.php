@@ -193,10 +193,18 @@ function db_get_id($id_name, $table) {
 		if (db_vexec('INSERT INTO '.$table.' SET '.$insert, $values) != 1) 
 			fatal('expected INSERT to affect precisely 1 row, but it did not');
 		$id = mysqli_insert_id($GLOBALS['db']);
-	}
+	} 
 	db_direct('UNLOCK TABLES');
 
 	return $id;
+}
+
+function db_last_insert_id() {
+        return mysqli_insert_id($GLOBALS['db']);
+}
+
+function from_unixtime($time) {
+	return db_single_field("SELECT FROM_UNIXTIME(?)", $time);
 }
 
 function db_dump_result($res, $show_table_names = 0) {

@@ -20,8 +20,10 @@ instelling: ovc
 	exit;
 }
 
-require_once('zportal.php');
-zportal_set_access_token($access_info['access_token']);
+// het idee is dat het roosterbord voor roosterinzage door gebruikers
+// geen gebruik hoeft te maken van de api
+//require_once('zportal.php');
+//zportal_set_access_token($access_info['access_token']);
 $sisyinfo = get_sisyinfo();
 
 // sanitize input
@@ -33,20 +35,23 @@ $bw = $_GET['bw'];
 $offset = $_SERVER['REQUEST_TIME'] + 2*24*60*60 + (10 + 7*60)*60;
 $current_week = date('W', $offset);
 $current_year = date('o', $offset);
-$weeks = db_all_assoc_rekey("SELECT * FROM weeks WHERE sisy_id = ?", $sisyinfo['sisy_id']);
-$default_week_info = db_single_row(<<<EOQ
-SELECT week_id, week FROM weeks WHERE year > ? OR ( year = ? AND week >= ? ) ORDER BY year, week
+$weeks = db_all_assoc_rekey("SELECT * FROM weeks JOIN ( SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1) AS valid USING (week_id) WHERE sisy_id = ? ORDER BY year, week", $sisyinfo['sisy_id']);
+$default_week_id = db_single_field(<<<EOQ
+SELECT week_id, week FROM weeks JOIN ( SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1) AS valid USING (week_id) WHERE year > ? OR ( year = ? AND week >= ? ) ORDER BY year, week
 EOQ
 , $current_year, $current_year, $current_week);
+// if there is no week at this time, then take the newest week that does exist
+if (!$default_week_id) $default_week_id = array_key_last($weeks);
+$default_week_info = $weeks[$default_week_id];
+//print_r($default_week_info);
 $default_week = $default_week_info['week'];
-$default_week_index = $default_week_info['week_id'];
 
 if (!isset($_GET['wk'])) $_GET['wk'] = $default_week;
 
 $week_index = 0;
 foreach ($weeks as $idx => $week) {
 	if ($_GET['wk'] == $week['week']) {
-		$week_index = $idx;
+		$week_id = $idx;
 		$safe_week = $week['week'];
 		break;
 	}
@@ -54,10 +59,10 @@ foreach ($weeks as $idx => $week) {
 
 if (!$week_index) {
 	$safe_week = $default_week;
-	$week_index = $default_week_index;
+	$week_id = $default_week_id;
 }
 
-$thismonday = $weeks[$week_index]['monday_unix_timestamp'];
+$thismonday = $weeks[$week_id]['monday_unix_timestamp'];
 
 $week_options = '';
 $prev_week = NULL;
@@ -90,35 +95,47 @@ $qs = explode(',', $_GET['q']);
 
 if (count($qs) > 1) fatal("multiple search terms currently not supported");
 
-$result = db_single_row("SELECT * FROM entities WHERE entity_name = ? AND entity_type != 'VAK'", $qs[0]);
+$result = db_single_row("SELECT * FROM entities WHERE entity_name = ?", $qs[0]);
 if (!$result) {
 	$safe_id = '';
 	$entity_type = '';
 	$entity_name = '';
 	$type = '';
 	$res_klas = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'STAMKLAS' AND entity_visible ORDER BY entity_name");
-	$res_doc = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities JOIN users USING (entity_id) WHERE entity_type = 'PERSOON' AND isEmployee AND entity_visible ORDER BY entity_name");
+	$res_doc = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities JOIN users USING (entity_id) WHERE entity_type = 'PERSOON' AND isEmployee AND entity_visible AND ".config('DOCFILTER')." ORDER BY entity_name");
 	$res_lok = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'LOKAAL' AND entity_visible ORDER BY entity_name");
 	$res_cat = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'CATEGORIE' AND entity_visible ORDER BY entity_name");
-	//$res_vak = db_all_assoc_rekey("SELECT entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible");
+	$res_vak = db_all_assoc_rekey("SELECT entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible ORDER BY entity_name");
 
 	goto cont;
 }
 
 $entity_type = $result['entity_type'];
 $entity_name = $result['entity_name'];
-$safe_id = $result['entity_id'];
+$entity_id = $result['entity_id'];
 
-$fields = 'id,appointmentInstance,start,startTimeSlot,endTimeSlot,teachers,groups,locations,valid,cancelled,new,changeDescription,subjects,teacherChanged,groupChanged,locationChanged,timeChanged,students,schedulerRemark,modified,moved';
+$rooster_info = db_single_row('SELECT GROUP_CONCAT(rooster_id) rooster_ids, COUNT(rooster_id) version, MAX(rooster_last_modified) last_modified, MAX(rooster_last_synced) last_synced FROM roosters WHERE rooster_ok = 1 AND week_id = ?', $week_id);
+
+if (!$rooster_info) fatal("no rooster info?!?!?!");
+$rooster_ids = $rooster_info['rooster_ids'];
+
+//echo("week_id = $week_id rooster_ids=$rooster_ids");
+
+$fields = 'id,appointmentInstance,start,startTimeSlot,endTimeSlot,teachers,groups,locations,valid,cancelled,new,changeDescription,subjects,students,modified,moved';
+//	fields are useless, because they are not always present, also
+//	what should these fields say when the subject has changed?
+//	teacherChanged,groupChanged,locationChanged,timeChanged,
 
 switch ($entity_type) {
 case 'LESGROEP':
+	fatal("not implemented");
 	$type = 'lesgroep '.$entity_name;
 	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
 		'end', $thismonday + 7*24*60*60, 'schoolInSchoolYear', config('SISY'),
 		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'STAMKLAS':
+	fatal("not implemented");
 	$type = 'klas'.$entity_name;
 	$type = 'lesgroep '.$entity_name;
 	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
@@ -126,28 +143,25 @@ case 'STAMKLAS':
 		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'CATEGORIE':
+	fatal("not implemented");
 	$type = 'categorie '.$entity_name;
 	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
 		'end', $thismonday + 7*24*60*60, 'departmentOfBranch', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'LOKAAL':
-	//print_r($result);
-	//echo("thismonday=$thismonday, nextmonday=".($thismonday+7*24*60*60));
 	$type = 'lokaal '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'locationsOfBranch', $result['entity_zid'], 'type', 'lesson');
+	$data = master_query($entity_id, 'locations', $rooster_ids);
 	break;
 case 'PERSOON':
+	fatal("not implemented");
 	$type = $entity_name;
 	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'user', $result['entity_name'], 'type', 'lesson', 'fields', $fields);
+		'end', $thismonday + 7*24*60*60, 'user', strtolower($result['entity_name']), 'type', 'lesson', 'fields', $fields);
 	break;
-	/* not supported by zermelo api (if requesting as normal user, at least)
 case 'VAK':
 	$type = 'vak '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday, 'end', $thismonday + 7*24*60*60, 'subjects', 'wisa');
+	$data = master_query($entity_id, 'subjects', $rooster_ids);
 	break;
-	 */
 default:
 	fatal('onmogelijk type');
 }
@@ -156,11 +170,16 @@ cont:
 
 function make_link($target, $text = NULL) {
 	global $link_tail, $link_tail_tail;
-	return '<a href="?q='.urlencode($target).$link_tail.($text?$text:htmlenc($target)).'</a>';
+	return '<a href="?q='.urlencode($target).$link_tail.($text?$text:$target).'</a>';
 }
 
 function enccommabr($string) {
-        return implode('<br>', explode(',', htmlenc($string)));
+	$array = explode(',', $string);
+	if (count($array) > 5) {
+		$array = array_slice($array, 0, 4);
+		$array[] = '&vellip;';
+	}
+        return implode('<br>', $array);
 }
 
 function vakmatch($vak, $match) {
@@ -248,6 +267,8 @@ EOS
 <?php foreach ($res_doc as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <p>Lokalen:
 <?php foreach ($res_lok as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
+<p>Vakken:
+<?php foreach ($res_vak as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <p>Categorie&euml;n:
 <?php foreach ($res_cat as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <?
@@ -259,41 +280,30 @@ EOS
 		?> van <? echo($type.'.');
 	} 
 	$totable = array();
-	if (isset($appointments)) foreach ($appointments as $appointment) {
-
-		$uur = dereference($appointment, 'startTimeSlot');
-		if ($uur != dereference($appointment, 'endTimeSlot')) fatal('start and end timeslot not the same for lesson');
-		$day_number = date('N', dereference($appointment, 'start'));
+	if (isset($data)) foreach ($data as $a) {
+		$uur = $a['appointment_startTimeSlot'];
+		if ($uur != $a['appointment_endTimeSlot']) fatal('start and end timeslot not the same');
+		$day_number = $a['day'];
 		$sort = $uur.$day_number;
 		$dag = isodayname($day_number);
-		$valid = dereference($appointment, 'valid');
-		$cancelled = dereference($appointment, 'cancelled');
-		$modified = dereference($appointment, 'modified');
-		$moved = dereference($appointment, 'moved');
-		$new = dereference($appointment, 'new');
-		// the fields timeChanged, locationChanged, groupChanged, teacherChanged
-		// are not always available (for example, while looking at appointments
-		// in the context of locations, so we will just use modified and moved
-
-		if (!($modified||$moved) || $cancelled) {
-			
+		$valid = $a['appointment_valid'];
+		$cancelled = $a['appointment_cancelled'];
+		$modified = $a['appointment_modified'];
+		$moved = $a['appointment_moved'];
+		$new = $a['appointment_new'];
+		if ($bw = 'b' && (!($modified||$moved||$new) || $cancelled)) {
 			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
-			sort($appointment['teachers']);
-			$totable[$sort][] = array (
+			$totable[$sort][] = array(
 				'dag' => $dag,
 				'uur' => $uur,
-				'groups' => implode(',',$appointment['groups']),
-				'subjects' => implode(',',$appointment['subjects']),
-				'teachers' => implode(',',$appointment['teachers']),
-				'locations' => implode(',',$appointment['locations'])
+				'groups' => $a['groups'],
+				'subjects' => $a['subjects'],
+				'teachers' => $a['teachers'],
+				'locations' => $a['locations']
 			);
-		} /*else { ?><pre><?print_r($appointment); ?></pre> <? } */
-		
-
-?>
-	<!--<pre><?=$appointment['appointmentInstance'].'-'.$appointment['id'].'-'.$uur.$day_number.'-'.$dag.$uur.'-'.implode(',',$appointment['groups']).'-'.implode(',',$appointment['subjects']).'-'.implode(',',$appointment['teachers']).'-'.implode(',',$appointment['locations']).'-'.($appointment['valid']?'valid':'notvalid').'-'.($appointment['cancelled']?'cancelled':'notcancelled')?><? print_r($appointment); ?></pre>-->
-<? 	}
-ksort($totable);
+		}
+	}
+	ksort($totable);
 ?>
 <p><table id="rooster"><tr><th></th>
 <th>ma <? echo date("j-n", $thismonday)          ?></th>
@@ -339,7 +349,13 @@ foreach($totable[$key] as $les) {
 
 <p>
 <span id="updateinfo">
-Je browser heeft een cookie waarmee je autmatisch toegang hebt tot het roosterbord als <?=$access_info['entity_name']?>. Als je het cookie verwijdert, dan moet je opniew een koppelcode invoeren om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie verwijderen]</a>
+Huidig weekrooster v<?=$rooster_info['version']?>,
+laatste wijziging <?=$rooster_info['last_modified']?>,
+laatste synchronisatie <?=$rooster_info['last_synced']?>.
+Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren
+om toegang te krijgen tot het roosterbord. <a
+href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?>
+verwijderen]</a>
 </span>
 
 <?php html_end(); ?>
