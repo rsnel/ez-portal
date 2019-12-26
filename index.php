@@ -35,20 +35,35 @@ $bw = $_GET['bw'];
 $offset = $_SERVER['REQUEST_TIME'] + 2*24*60*60 + (10 + 7*60)*60;
 $current_week = date('W', $offset);
 $current_year = date('o', $offset);
-$weeks = db_all_assoc_rekey("SELECT * FROM weeks JOIN ( SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1) AS valid USING (week_id) WHERE sisy_id = ? ORDER BY year, week", $sisyinfo['sisy_id']);
+
+$weeks = db_all_assoc_rekey(<<<EOQ
+SELECT * FROM weeks
+JOIN (
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
+) AS valid USING (week_id)
+WHERE sisy_id = ?
+ORDER BY year, week
+EOQ
+, $sisyinfo['sisy_id']);
+
 $default_week_id = db_single_field(<<<EOQ
-SELECT week_id, week FROM weeks JOIN ( SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1) AS valid USING (week_id) WHERE year > ? OR ( year = ? AND week >= ? ) ORDER BY year, week
+SELECT week_id FROM weeks
+JOIN (
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
+) AS valid USING (week_id)
+WHERE year > ? OR ( year = ? AND week >= ? )
+ORDER BY year, week
 EOQ
 , $current_year, $current_year, $current_week);
+
 // if there is no week at this time, then take the newest week that does exist
 if (!$default_week_id) $default_week_id = array_key_last($weeks);
 $default_week_info = $weeks[$default_week_id];
-//print_r($default_week_info);
 $default_week = $default_week_info['week'];
 
 if (!isset($_GET['wk'])) $_GET['wk'] = $default_week;
 
-$week_index = 0;
+$week_id = 0;
 foreach ($weeks as $idx => $week) {
 	if ($_GET['wk'] == $week['week']) {
 		$week_id = $idx;
@@ -57,10 +72,32 @@ foreach ($weeks as $idx => $week) {
 	}
 }
 
-if (!$week_index) {
+if (!$week_id) {
 	$safe_week = $default_week;
 	$week_id = $default_week_id;
 }
+
+$rooster_info = db_single_row(<<<EOQ
+SELECT rooster_ids, version,
+	DATE_FORMAT(last_modified, CONCAT('wk%v',
+		CASE WEEKDAY(last_modified) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo'
+		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
+	'%H:%i')) last_modified,
+	DATE_FORMAT(last_synced, CONCAT('wk%v',
+		CASE WEEKDAY(last_synced) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo'
+		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
+	'%H:%i')) last_synced
+FROM (
+	SELECT GROUP_CONCAT(rooster_id) rooster_ids, COUNT(rooster_id) version, MAX(rooster_last_modified) last_modified, MAX(rooster_last_synced) last_synced
+	FROM roosters
+	WHERE rooster_ok = 1
+	AND week_id = ?
+) AS tmp
+EOQ
+, $week_id);
+
+if (!$rooster_info) fatal("no rooster info?!?!?!");
+$rooster_ids = $rooster_info['rooster_ids'];
 
 $thismonday = $weeks[$week_id]['monday_unix_timestamp'];
 
@@ -105,7 +142,7 @@ if (!$result) {
 	$res_doc = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities JOIN users USING (entity_id) WHERE entity_type = 'PERSOON' AND isEmployee AND entity_visible AND ".config('DOCFILTER')." ORDER BY entity_name");
 	$res_lok = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'LOKAAL' AND entity_visible ORDER BY entity_name");
 	$res_cat = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'CATEGORIE' AND entity_visible ORDER BY entity_name");
-	$res_vak = db_all_assoc_rekey("SELECT entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible ORDER BY entity_name");
+	$res_vak = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible ORDER BY entity_name");
 
 	goto cont;
 }
@@ -114,39 +151,18 @@ $entity_type = $result['entity_type'];
 $entity_name = $result['entity_name'];
 $entity_id = $result['entity_id'];
 
-$rooster_info = db_single_row('SELECT GROUP_CONCAT(rooster_id) rooster_ids, COUNT(rooster_id) version, MAX(rooster_last_modified) last_modified, MAX(rooster_last_synced) last_synced FROM roosters WHERE rooster_ok = 1 AND week_id = ?', $week_id);
-
-if (!$rooster_info) fatal("no rooster info?!?!?!");
-$rooster_ids = $rooster_info['rooster_ids'];
-
-//echo("week_id = $week_id rooster_ids=$rooster_ids");
-
-$fields = 'id,appointmentInstance,start,startTimeSlot,endTimeSlot,teachers,groups,locations,valid,cancelled,new,changeDescription,subjects,students,modified,moved';
-//	fields are useless, because they are not always present, also
-//	what should these fields say when the subject has changed?
-//	teacherChanged,groupChanged,locationChanged,timeChanged,
-
 switch ($entity_type) {
 case 'LESGROEP':
 	fatal("not implemented");
 	$type = 'lesgroep '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'schoolInSchoolYear', config('SISY'),
-		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'STAMKLAS':
 	fatal("not implemented");
 	$type = 'klas'.$entity_name;
-	$type = 'lesgroep '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'schoolInSchoolYear', config('SISY'),
-		'containsStudentsFromGroupInDepartment', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'CATEGORIE':
 	fatal("not implemented");
 	$type = 'categorie '.$entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'departmentOfBranch', $result['entity_zid'], 'type', 'lesson');
 	break;
 case 'LOKAAL':
 	$type = 'lokaal '.$entity_name;
@@ -268,7 +284,7 @@ EOS
 <p>Lokalen:
 <?php foreach ($res_lok as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <p>Vakken:
-<?php foreach ($res_vak as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
+<?php foreach ($res_vak as $entity_name) { echo(' '.make_link($entity_name, substr($entity_name, 1))); }; ?>
 <p>Categorie&euml;n:
 <?php foreach ($res_cat as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <?
@@ -349,13 +365,12 @@ foreach($totable[$key] as $les) {
 
 <p>
 <span id="updateinfo">
-Huidig weekrooster v<?=$rooster_info['version']?>,
+Het rooster in deze week r<?=$rooster_info['version']?>,
 laatste wijziging <?=$rooster_info['last_modified']?>,
 laatste synchronisatie <?=$rooster_info['last_synced']?>.
 Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren
-om toegang te krijgen tot het roosterbord. <a
-href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?>
-verwijderen]</a>
+om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie van <?=
+$access_info['entity_name']?> verwijderen]</a>
 </span>
 
 <?php html_end(); ?>
