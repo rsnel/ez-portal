@@ -7,18 +7,16 @@ $_SERVER['EZ_PORTAL_INSTITUTION'] = 'ovc';
 require_once('common.php');
 require_once('zportal.php');
 
-$access_token = db_single_field("SELECT access_token FROM access JOIN users USING (entity_id) WHERE isEmployee = 1");
+set_employee_token();
 
-if (!$access_token) fatal("no employee token available");
+//$access_token = db_single_field("SELECT access_token FROM access JOIN users USING (entity_id) WHERE isEmployee = 1");
 
-zportal_set_access_token($access_token);
+//if (!$access_token) fatal("no employee token available");
 
-//$string = file_get_contents("out-35-ok2.json");
-//$json = json_decode($string, 'true');
-//$json = dereference($json, 'response', 'data');
+//zportal_set_access_token($access_token);
 
 // dit is de week die we gaan importeren
-$week_info = db_single_row("SELECT week_id, monday_unix_timestamp FROM weeks JOIN sisys USING (sisy_id) WHERE week = 36 AND sisy_zid = 351");
+$week_info = db_single_row("SELECT week_id, monday_unix_timestamp FROM weeks JOIN sisys USING (sisy_id) WHERE week = 35 AND sisy_zid = 351");
 
 if (!$week_info) fatal("unknown week");
 $week_id = $week_info['week_id'];
@@ -31,12 +29,19 @@ db_exec('INSERT INTO roosters ( week_id ) VALUES ( ? )', $week_id);
 $rooster_id = db_last_insert_id();
 echo("rooster_id=$rooster_id\n");
 
-$json = zportal_GET_data('appointments','start', $start, 'end', $end, 'fields', 'appointmentInstance,id,startTimeSlot,endTimeSlot,start,end,branchOfSchool,type,optional,subjects,teachers,groupsInDepartments,locationsOfBranch,cancelled,timeChanged,teacherChanged,groupChanged,locationChanged,changeDescription,valid,new,hidden,modified,moved,students,lastModified,appointmentLastModified', 'schoolInSchoolYear', 351);
+$json = zportal_GET_data_cached('appointments', 'includeHidden', 'true',
+	'start', $start, 'end', $end, 'fields', 'appointmentInstance,id,startTimeSlot,'.
+	'endTimeSlot,start,end,branchOfSchool,type,optional,subjects,teachers,'.
+	'groupsInDepartments,locationsOfBranch,cancelled,timeChanged,teacherChanged,'.
+	'groupChanged,locationChanged,changeDescription,valid,new,hidden,modified,'.
+	'moved,students,lastModified,appointmentLastModified', 'schoolInSchoolYear', 351);
 
 $lastModified = 0;
 
 foreach ($json as $appointment) {
 	print_r($appointment);
+	exit;
+	continue;
 	if (dereference($appointment, 'hidden')) fatal('hidden appointments not implemented');
 	$groupsInDepartments = dereference($appointment, 'groupsInDepartments');
 	$locationsOfBranch = dereference($appointment, 'locationsOfBranch');
@@ -108,7 +113,7 @@ foreach ($json as $appointment) {
 	echo("appointment_id=$appointment_id\n");
 }
 
-db_exec('UPDATE roosters SET rooster_last_modified = FROM_UNIXTIME(?), rooster_ok = 1',
-	$lastModified);
+db_exec('UPDATE roosters SET rooster_last_modified = FROM_UNIXTIME(?), rooster_ok = 1 WHERE rooster_id = ?',
+	$lastModified, $rooster_id);
 
 ?>

@@ -1,12 +1,7 @@
 <?php
 
-if (!checksetarray($mysqli_info, 'host', 'username', 'passwd', 'dbname'))
-	fatal('$mysql_info array not defined or complete '.
-			'(host, username, passwd, dbane) in '.$configfile);
-
-if (!($GLOBALS['db'] = mysqli_connect($mysqli_info['host'],
-		$mysqli_info['username'], $mysqli_info['passwd'],
-		$mysqli_info['dbname']))) {
+if (!($GLOBALS['db'] = mysqli_connect(config('MYSQL_HOST'), config('MYSQL_USERNAME'),
+		config('MYSQL_PASSWORD'), config('MYSQL_DBNAME')))) {
 	fatal("mysqli_connect (".mysqli_connect_errno()."): ".
 			mysqli_connect_error());
 }

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 26, 2019 at 11:44 PM
+-- Generation Time: Dec 27, 2019 at 03:01 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -37,20 +37,6 @@ CREATE TABLE `access` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `agstds`
---
-
-CREATE TABLE `agstds` (
-  `agstd_id` int(11) NOT NULL,
-  `groups_egrp_id` int(11) DEFAULT NULL,
-  `subjects_egrp_id` int(11) DEFAULT NULL,
-  `teachers_egrp_id` int(11) DEFAULT NULL,
-  `locations_egrp_id` int(11) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `appointments`
 --
 
@@ -64,7 +50,10 @@ CREATE TABLE `appointments` (
   `appointment_end` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `bos_id` int(11) NOT NULL,
   `appointment_type` enum('lesson','activity','exam','choice','talk','other') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `agstd_id` int(11) NOT NULL,
+  `groups_egrp_id` int(11) NOT NULL,
+  `subjects_egrp_id` int(11) NOT NULL,
+  `teacers_egrp_id` int(11) NOT NULL,
+  `locations_egrp_id` int(11) NOT NULL,
   `students_egrp_id` int(11) DEFAULT NULL,
   `appointment_optional` tinyint(1) NOT NULL,
   `appointment_valid` tinyint(1) NOT NULL,
@@ -127,11 +116,10 @@ CREATE TABLE `egrps` (
 
 CREATE TABLE `entities` (
   `entity_id` int(11) NOT NULL,
-  `entity_zid` int(11) DEFAULT NULL,
   `entity_name` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
   `entity_type` enum('PERSOON','LOKAAL','LESGROEP','VAK','CATEGORIE','STAMKLAS') COLLATE utf8mb4_unicode_ci NOT NULL,
   `entity_visible` tinyint(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
 
@@ -148,13 +136,28 @@ CREATE TABLE `entities2egrps` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `entity_zids`
+--
+
+CREATE TABLE `entity_zids` (
+  `entitiy_zid_id` int(11) NOT NULL,
+  `entity_id` int(11) NOT NULL,
+  `entity_zid` int(11) DEFAULT NULL,
+  `parent_entity_id` int(11) DEFAULT NULL,
+  `bos_id` int(11) DEFAULT NULL,
+  `sisy_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `holidays`
 --
 
 CREATE TABLE `holidays` (
   `holiday_id` int(11) NOT NULL,
   `holiday_zid` int(11) NOT NULL,
-  `sisy_id` int(11) NOT NULL,
+  `sisy_id` int(11) DEFAULT NULL,
   `holiday_name` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
   `holiday_start` date NOT NULL,
   `holiday_end` date NOT NULL
@@ -216,7 +219,7 @@ CREATE TABLE `users` (
   `isMentor` tinyint(1) NOT NULL,
   `isParentTeacherNightScheduler` tinyint(1) NOT NULL,
   `isDean` tinyint(1) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
 
@@ -250,22 +253,15 @@ ALTER TABLE `access`
   ADD KEY `entity_id` (`entity_id`);
 
 --
--- Indexes for table `agstds`
---
-ALTER TABLE `agstds`
-  ADD PRIMARY KEY (`agstd_id`),
-  ADD UNIQUE KEY `groups_egrp_id` (`groups_egrp_id`,`subjects_egrp_id`,`teachers_egrp_id`,`locations_egrp_id`);
-
---
 -- Indexes for table `appointments`
 --
 ALTER TABLE `appointments`
   ADD PRIMARY KEY (`appointment_id`),
   ADD UNIQUE KEY `appointment_zid` (`appointment_zid`,`rooster_id`),
   ADD KEY `bos_id` (`bos_id`),
-  ADD KEY `agstd_id` (`agstd_id`),
   ADD KEY `rooster_id` (`rooster_id`),
-  ADD KEY `prev_appointment_id` (`prev_appointment_id`);
+  ADD KEY `prev_appointment_id` (`prev_appointment_id`),
+  ADD KEY `students_egrp_id` (`students_egrp_id`);
 
 --
 -- Indexes for table `boss`
@@ -293,7 +289,7 @@ ALTER TABLE `egrps`
 ALTER TABLE `entities`
   ADD PRIMARY KEY (`entity_id`),
   ADD UNIQUE KEY `entity_name` (`entity_name`,`entity_type`),
-  ADD KEY `entity_zid` (`entity_zid`,`entity_type`);
+  ADD KEY `entity_zid` (`entity_type`);
 
 --
 -- Indexes for table `entities2egrps`
@@ -303,6 +299,17 @@ ALTER TABLE `entities2egrps`
   ADD UNIQUE KEY `entity2egrp` (`entity_id`,`egrp_id`) USING BTREE,
   ADD KEY `egrp_id` (`egrp_id`),
   ADD KEY `entity_id` (`entity_id`);
+
+--
+-- Indexes for table `entity_zids`
+--
+ALTER TABLE `entity_zids`
+  ADD PRIMARY KEY (`entitiy_zid_id`),
+  ADD UNIQUE KEY `entity_id_2` (`entity_id`,`sisy_id`),
+  ADD KEY `bos_id` (`bos_id`),
+  ADD KEY `sisy_id` (`sisy_id`),
+  ADD KEY `parent_entity_id` (`parent_entity_id`),
+  ADD KEY `entity_id` (`entity_id`) USING BTREE;
 
 --
 -- Indexes for table `holidays`
@@ -338,8 +345,9 @@ ALTER TABLE `users`
 --
 ALTER TABLE `weeks`
   ADD PRIMARY KEY (`week_id`),
-  ADD UNIQUE KEY `year` (`year`,`week`),
-  ADD KEY `sisy_id` (`sisy_id`);
+  ADD UNIQUE KEY `sisy_id` (`sisy_id`,`week`),
+  ADD KEY `year` (`year`,`week`),
+  ADD KEY `sisy_id_2` (`sisy_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -350,11 +358,6 @@ ALTER TABLE `weeks`
 --
 ALTER TABLE `access`
   MODIFY `access_id` int(11) NOT NULL AUTO_INCREMENT;
---
--- AUTO_INCREMENT for table `agstds`
---
-ALTER TABLE `agstds`
-  MODIFY `agstd_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `appointments`
 --
@@ -385,6 +388,11 @@ ALTER TABLE `entities`
 --
 ALTER TABLE `entities2egrps`
   MODIFY `entity2egrp_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `entity_zids`
+--
+ALTER TABLE `entity_zids`
+  MODIFY `entitiy_zid_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `holidays`
 --
@@ -425,9 +433,9 @@ ALTER TABLE `access`
 --
 ALTER TABLE `appointments`
   ADD CONSTRAINT `appointments_ibfk_1` FOREIGN KEY (`bos_id`) REFERENCES `boss` (`bos_id`),
-  ADD CONSTRAINT `appointments_ibfk_2` FOREIGN KEY (`agstd_id`) REFERENCES `agstds` (`agstd_id`),
   ADD CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`rooster_id`) REFERENCES `roosters` (`rooster_id`),
-  ADD CONSTRAINT `appointments_ibfk_4` FOREIGN KEY (`prev_appointment_id`) REFERENCES `appointments` (`appointment_id`);
+  ADD CONSTRAINT `appointments_ibfk_4` FOREIGN KEY (`prev_appointment_id`) REFERENCES `appointments` (`appointment_id`),
+  ADD CONSTRAINT `appointments_ibfk_5` FOREIGN KEY (`students_egrp_id`) REFERENCES `egrps` (`egrp_id`);
 
 --
 -- Constraints for table `entities2egrps`
@@ -435,6 +443,15 @@ ALTER TABLE `appointments`
 ALTER TABLE `entities2egrps`
   ADD CONSTRAINT `entities2egrps_ibfk_1` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`entity_id`),
   ADD CONSTRAINT `entities2egrps_ibfk_2` FOREIGN KEY (`egrp_id`) REFERENCES `egrps` (`egrp_id`);
+
+--
+-- Constraints for table `entity_zids`
+--
+ALTER TABLE `entity_zids`
+  ADD CONSTRAINT `entity_zids_ibfk_1` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`entity_id`),
+  ADD CONSTRAINT `entity_zids_ibfk_2` FOREIGN KEY (`parent_entity_id`) REFERENCES `entities` (`entity_id`),
+  ADD CONSTRAINT `entity_zids_ibfk_3` FOREIGN KEY (`bos_id`) REFERENCES `boss` (`bos_id`),
+  ADD CONSTRAINT `entity_zids_ibfk_4` FOREIGN KEY (`sisy_id`) REFERENCES `sisys` (`sisy_id`);
 
 --
 -- Constraints for table `holidays`

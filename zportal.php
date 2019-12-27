@@ -63,7 +63,20 @@ function zportal_json($url) {
 
 	if (($json = json_decode($ret, true)) == NULL) fatal("unable to decode JSON data");
 
+	file_put_contents(config('DATADIR').'cache_'.hash('sha256', $url).'.json', $ret);
+
 	return $json;
+}
+
+function zportal_json_cached($url) {
+	$filename = config('DATADIR').'cache_'.hash('sha256', $url).'.json';
+	if (is_readable($filename) && ($ret = file_get_contents($filename)) !== FALSE) {
+		echo("cache hit!\n");
+		if (($json = json_decode($ret, true)) == NULL) fatal("unable to decode JSON data");
+		return $json;
+	}
+
+	return zportal_json($url);
 }
 
 function zportal_vPOST_json($command, $args) {
@@ -93,10 +106,30 @@ function zportal_vGET_json($command, $args) {
 	return zportal_json($url);
 }
 
+function zportal_vGET_json_cached($command, $args) {
+	global $ch;
+
+	$query_string = zportal_vquery_string($args);
+
+	$url = zportal_url($command, $query_string);
+
+	if (!curl_setopt($ch, CURLOPT_HTTPGET, true)) fatal_curl();
+
+	return zportal_json_cached($url);
+}
+
 function zportal_vGET_data($command, $args) {
 	global $ch;
 
 	$json = zportal_vGET_json($command, $args);
+
+	return dereference($json, 'response', 'data');
+}
+
+function zportal_vGET_data_cached($command, $args) {
+	global $ch;
+
+	$json = zportal_vGET_json_cached($command, $args);
 
 	return dereference($json, 'response', 'data');
 }
@@ -113,6 +146,16 @@ function zportal_GET_data($command) {
         array_shift($args);
 
 	return zportal_vGET_data($command, $args);
+}
+
+function zportal_GET_data_cached($command) {
+	global $ch;
+
+	/* get args after $command */
+	$args = func_get_args();
+        array_shift($args);
+
+	return zportal_vGET_data_cached($command, $args);
 }
 
 function zportal_GET_row($command) {

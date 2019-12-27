@@ -13,18 +13,12 @@ if (!$access_info) {
 <form action="req_access_token.php" method="POST" accept-charset="UTF-8">
 instelling: ovc
 <p><label>code: <input autocomplete="off" type="text" placeholder="*** *** *** ***" name="code"></label>
-<p><input type="submit" value="Koppel">
+<p><input type="submit" value="Koppel en plaats toegangscookie">
 </form>	
 <p>Als de koppeling lukt, dan wordt er een cookie met de naam <code>access_token</code> geplaatst in je browser. Dit cookie zorgt ervoor dat je steeds, zonder inloggen of koppelen, bij het rooster kunt. In de website heb je altijd de mogelijkheid om het cookie te verwijderen. Je gaat vanzelfsprekend akkoord met het plaatsen van dit cookie.
 <?php	html_end();
 	exit;
 }
-
-// het idee is dat het roosterbord voor roosterinzage door gebruikers
-// geen gebruik hoeft te maken van de api
-//require_once('zportal.php');
-//zportal_set_access_token($access_info['access_token']);
-$sisyinfo = get_sisyinfo();
 
 // sanitize input
 if (!isset($_GET['bw']) || ( $_GET['bw'] != 'w' && $_GET['bw'] != 'b' )) $_GET['bw'] = 'w';
@@ -41,10 +35,13 @@ SELECT * FROM weeks
 JOIN (
 	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
 ) AS valid USING (week_id)
-WHERE sisy_id = ?
+JOIN sisys USING (sisy_id)
+WHERE sisy_archived != 1
 ORDER BY year, week
 EOQ
-, $sisyinfo['sisy_id']);
+);
+
+if (!$weeks) fatal("rooster nog niet ingelezen");
 
 $default_week_id = db_single_field(<<<EOQ
 SELECT week_id FROM weeks
@@ -107,12 +104,12 @@ $next_week = NULL;
 $last_week = NULL;
 foreach ($weeks as $week) {
 	$week_options .= '<option';
-	if ($last_week === NULL && $prev_week != NULL) $next_week = $week['week'];
+	if ($last_week == $safe_week) $next_week = $week['week'];
 	if ($week['week'] == $safe_week) {
 		$prev_week = $last_week;
 		$week_options .= ' selected';
-		$last_week = NULL;
-	} else $last_week = $week['week'];
+	}
+	$last_week = $week['week'];
 	$week_options .= ' value="'.($week['week'] == $default_week?'':$week['week']).'">'.$week['week'].'</option>'."\n";
 }
 
@@ -153,15 +150,15 @@ $entity_id = $result['entity_id'];
 
 switch ($entity_type) {
 case 'LESGROEP':
-	fatal("not implemented");
+	fatal("not implemented (LESGROEP)");
 	$type = 'lesgroep '.$entity_name;
 	break;
 case 'STAMKLAS':
-	fatal("not implemented");
+	fatal("not implemented (STAMKLAS)");
 	$type = 'klas'.$entity_name;
 	break;
 case 'CATEGORIE':
-	fatal("not implemented");
+	fatal("not implemented (CATEGORIE)");
 	$type = 'categorie '.$entity_name;
 	break;
 case 'LOKAAL':
@@ -169,7 +166,7 @@ case 'LOKAAL':
 	$data = master_query($entity_id, 'locations', $rooster_ids);
 	break;
 case 'PERSOON':
-	fatal("not implemented");
+	fatal("not implemented (PERSOON)");
 	$type = $entity_name;
 	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
 		'end', $thismonday + 7*24*60*60, 'user', strtolower($result['entity_name']), 'type', 'lesson', 'fields', $fields);

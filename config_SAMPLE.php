@@ -1,10 +1,11 @@
 <?php
 
-$mysqli_info = array (
-        'host' => 'localhost',
-        'username' => 'USERNAME',
-        'passwd' => 'PASSWORD',
-        'dbname' => 'ez-portal_SAMPLE'
+$config = array (
+	'MYSQL_HOST' => 'localhost',
+	'MYSQL_USERNAME' => 'USERNAME',
+	'MYSQL_PASSWORD' => 'PASSWORD',
+	'MYSQL_DBNAME' => 'ez-portal_SAMPLE',
+	'DATADIR' => '/var/local/ez-portal/SAMPLE/'
 );
 
 ?>
