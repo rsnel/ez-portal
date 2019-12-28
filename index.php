@@ -31,9 +31,11 @@ $current_week = date('W', $offset);
 $current_year = date('o', $offset);
 
 $weeks = db_all_assoc_rekey(<<<EOQ
-SELECT * FROM weeks
+SELECT week_id, year, week, sisy_id, sisy_school, sisy_project,
+	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp
+FROM weeks
 JOIN (
-	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1 AND rooster_last_modified != 0
 ) AS valid USING (week_id)
 JOIN sisys USING (sisy_id)
 WHERE sisy_archived != 1
@@ -46,7 +48,7 @@ if (!$weeks) fatal("rooster nog niet ingelezen");
 $default_week_id = db_single_field(<<<EOQ
 SELECT week_id FROM weeks
 JOIN (
-	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1 AND rooster_last_modified != 0
 ) AS valid USING (week_id)
 WHERE year > ? OR ( year = ? AND week >= ? )
 ORDER BY year, week
@@ -74,6 +76,7 @@ if (!$week_id) {
 	$week_id = $default_week_id;
 }
 
+//echo("week_id=$week_id\n");
 $rooster_info = db_single_row(<<<EOQ
 SELECT rooster_ids, version,
 	DATE_FORMAT(last_modified, CONCAT('wk%v',
@@ -85,8 +88,12 @@ SELECT rooster_ids, version,
 		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
 	'%H:%i')) last_synced
 FROM (
-	SELECT GROUP_CONCAT(rooster_id) rooster_ids, COUNT(rooster_id) version, MAX(rooster_last_modified) last_modified, MAX(rooster_last_synced) last_synced
+	SELECT GROUP_CONCAT(rooster_id) rooster_ids,
+		COUNT(rooster_id) version,
+		MAX(rooster_last_modified) last_modified,
+		MAX(week_last_sync) last_synced
 	FROM roosters
+	JOIN weeks USING (week_id)
 	WHERE rooster_ok = 1
 	AND week_id = ?
 ) AS tmp
@@ -97,6 +104,12 @@ if (!$rooster_info) fatal("no rooster info?!?!?!");
 $rooster_ids = $rooster_info['rooster_ids'];
 
 $thismonday = $weeks[$week_id]['monday_unix_timestamp'];
+$sisy_id = $weeks[$week_id]['sisy_id'];
+$school = $weeks[$week_id]['sisy_school'];
+$project = $weeks[$week_id]['sisy_project'];
+$no_bos = db_single_field("SELECT COUNT(bos_id) FROM boss WHERE sisy_id = ?", $sisy_id);
+if ($no_bos != 1) fatal("unsupported value of no brach_of_schools $no_bos, only 1 supported at the moment");
+$bos_id = db_single_field("SELECT bos_id FROM boss WHERE sisy_id = ?", $sisy_id);
 
 $week_options = '';
 $prev_week = NULL;
@@ -121,13 +134,11 @@ else $link_tail = $link_tail_wowk;
 
 $link_tail .= $link_tail_tail.'">';
 
-// show rooster of the owner of the token by default
+// show rooster of the owner of the token by default 
 if (!isset($_GET['q'])) $_GET['q'] = $access_info['entity_name'];
 else $_GET['q'] = trim($_GET['q']);
 
 $qs = explode(',', $_GET['q']);
-
-if (count($qs) > 1) fatal("multiple search terms currently not supported");
 
 $result = db_single_row("SELECT * FROM entities WHERE entity_name = ?", $qs[0]);
 if (!$result) {
@@ -135,11 +146,64 @@ if (!$result) {
 	$entity_type = '';
 	$entity_name = '';
 	$type = '';
-	$res_klas = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'STAMKLAS' AND entity_visible ORDER BY entity_name");
-	$res_doc = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities JOIN users USING (entity_id) WHERE entity_type = 'PERSOON' AND isEmployee AND entity_visible AND ".config('DOCFILTER')." ORDER BY entity_name");
-	$res_lok = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'LOKAAL' AND entity_visible ORDER BY entity_name");
-	$res_cat = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'CATEGORIE' AND entity_visible ORDER BY entity_name");
-	$res_vak = db_all_assoc_rekey("SELECT entity_id, entity_name FROM entities WHERE entity_type = 'VAK' AND entity_visible ORDER BY entity_name");
+	$res_klas = db_all_assoc_rekey(<<<EOQ
+SELECT entity_id, entity_name
+FROM entities
+JOIN entity_zids USING (entity_id)
+WHERE entity_type = 'STAMKLAS'
+AND entity_visible
+AND sisy_id = ?
+AND bos_id = ?
+ORDER BY entity_name
+EOQ
+	, $sisy_id, $bos_id);
+	$docfilter = config('DOCFILTER');
+	$res_doc = db_all_assoc_rekey(<<<EOQ
+SELECT entity_id, entity_name
+FROM entities
+JOIN users USING (entity_id)
+JOIN entity_zids USING (entity_id)
+WHERE entity_type = 'PERSOON'
+AND isEmployee
+AND entity_visible
+AND sisy_id = ?
+AND $docfilter
+ORDER BY entity_name
+EOQ
+	, $sisy_id);
+	$res_lok = db_all_assoc_rekey(<<<EOQ
+SELECT entity_id, entity_name
+FROM entities
+JOIN entity_zids USING (entity_id)
+WHERE entity_type = 'LOKAAL'
+AND entity_visible
+AND sisy_id = ?
+AND bos_id = ?
+ORDER BY entity_name
+EOQ
+	, $sisy_id, $bos_id);
+	$res_cat = db_all_assoc_rekey(<<<EOQ
+SELECT entity_id, entity_name
+FROM entities
+JOIN entity_zids USING (entity_id)
+WHERE entity_type = 'CATEGORIE'
+AND entity_visible
+AND sisy_id = ?
+AND bos_id = ?
+ORDER BY entity_name
+EOQ
+	, $sisy_id, $bos_id);
+	$res_vak = db_all_assoc_rekey(<<<EOQ
+SELECT entity_id, entity_name
+FROM entities 
+JOIN entity_zids USING (entity_id)
+WHERE entity_type = 'VAK'
+AND entity_visible
+AND sisy_id = ?
+AND bos_id = ?
+ORDER BY entity_name
+EOQ
+	, $sisy_id, $bos_id);
 
 	goto cont;
 }
@@ -148,28 +212,61 @@ $entity_type = $result['entity_type'];
 $entity_name = $result['entity_name'];
 $entity_id = $result['entity_id'];
 
+$entity_multiple = 0;
+
+while (array_shift($qs) && count($qs)) {
+	// we hebben extra dingen met komma's
+	$result = db_single_row('SELECT entity_type, entity_id, entity_name FROM entities WHERE entity_name = ?', trim($qs[0]));
+	if ($result && ( $entity_type == $result['entity_type'] ||
+		( $entity_type == 'STAMKLAS' && $result['entity_type'] == 'LESGROEP' ) ||
+		( $entity_type == 'LESGROEP' && $result['entity_type'] == 'STAMKLAS'))) { // gevonden
+		$entity_id .= ','.$result['entity_id'];
+		$entity_name .= ','.$result['entity_name'];
+		$entity_multiple = 1;
+	}
+}
+
+// sorteer de gekozen entities als het er meer zijn
+if ($entity_multiple) {
+        $tmp = explode(',', $entity_name);
+        sort($tmp);
+        $entity_name = implode(',', $tmp);
+}
+
 switch ($entity_type) {
 case 'LESGROEP':
-	fatal("not implemented (LESGROEP)");
-	$type = 'lesgroep '.$entity_name;
-	break;
 case 'STAMKLAS':
-	fatal("not implemented (STAMKLAS)");
-	$type = 'klas'.$entity_name;
+	$lln_entity_ids = lln_query($entity_id, $rooster_ids);
+	$data = master_query($lln_entity_ids, 'students', $rooster_ids);
+	if ($entity_multiple) $type = 'groepen '.$entity_name;
+	else $type = 'groep '.$entity_name;
 	break;
 case 'CATEGORIE':
-	fatal("not implemented (CATEGORIE)");
-	$type = 'categorie '.$entity_name;
+	$group_entity_ids = db_single_field('SELECT GROUP_CONCAT(entity_id) FROM entity_zids WHERE sisy_id = ? AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )', $sisy_id, $bos_id);
+	$data = master_query($group_entity_ids, 'groups', $rooster_ids);
+	if ($entity_multiple) $type = 'categorie&euml;n '.$entity_name;
+	else $type = 'categorie '.$entity_name;
 	break;
 case 'LOKAAL':
-	$type = 'lokaal '.$entity_name;
+	if ($entity_multiple) $type = 'lokalen '.$entity_name;
+	else $type = 'lokaal '.$entity_name;
 	$data = master_query($entity_id, 'locations', $rooster_ids);
 	break;
 case 'PERSOON':
-	fatal("not implemented (PERSOON)");
-	$type = $entity_name;
-	$appointments = zportal_GET_data('appointments', 'start', $thismonday,
-		'end', $thismonday + 7*24*60*60, 'user', strtolower($result['entity_name']), 'type', 'lesson', 'fields', $fields);
+	$isWhat = db_single_row("SELECT * FROM users WHERE entity_id = ?", $entity_id);
+	if ($isWhat['isFamilyMember']) fatal("$entity_name is ouder, dat kan het systeem nog niet aan...");
+	if ($isWhat['isEmployee'] && $isWhat['isStudent']) fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
+	if ($isWhat['isStudent']) {
+		$data = master_query($entity_id, 'students', $rooster_ids);
+		if ($entity_multiple) $type = 'leerlingen '.$entity_name;
+		else $type = 'leerling '.$entity_name;
+	}
+	if ($isWhat['isEmployee']) {
+		$data = master_query($entity_id, 'teachers', $rooster_ids);
+		?><pre><? //print_r($data); ?></pre><?
+		if ($entity_multiple) $type = 'docenten '.$entity_name;
+		else $type = 'docent '.$entity_name;
+	}
 	break;
 case 'VAK':
 	$type = 'vak '.$entity_name;
@@ -178,6 +275,10 @@ case 'VAK':
 default:
 	fatal('onmogelijk type');
 }
+
+//db_dump_result($data);
+
+$data = db_build_assoc($data);
 
 cont:
 
@@ -227,7 +328,7 @@ function add_lv(&$info, $lesgroepen, $vak) {
         }
 }
 
-html_start(dereference($sisyinfo, 'sisy_name'), <<<EOS
+html_start($project, <<<EOS
 $(function(){
 	// focus search box
 	$('#q').focus();
@@ -239,7 +340,7 @@ EOS
 <p><div class="noprint" style="float: left">
 <form id="search" method="GET" name="search" accept-charset="UTF-8">
 <input type="submit" value="Zoek:">
-<input id="q" size="40" name="q"><? if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
+<input id="q" placeholder="llnr, afkorting, lokaal, /vak, groep of categorie" size="40" name="q"><? if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
 <input type="hidden" name="bw" value="<?=$bw?>">
 <?php if ($default_week == $safe_week) { ?>
 <input type="hidden" name="wk" value="">
@@ -265,7 +366,7 @@ EOS
 <? } ?>
 <select autocomplete="off" name="bw">
 <option <?=($bw == 'b')?'selected ':''?>value="b">basisrooster</option>
-<!--<option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>-->
+<option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>
 </select>
 <input name="q" type="hidden" value="<? echo(htmlenc($_GET['q'])) ?>">
 </form>
@@ -273,7 +374,7 @@ EOS
 <div style="clear: both">
 </div>
 <?php if ($entity_type === '') { ?>
-<p>Selecteer hieronder een klas, docent, lokaal of categorie:
+<p>Selecteer hieronder een klas, docent, lokaal, vak of categorie:
 <p>Klassen:
 <?php foreach ($res_klas as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
 <p>Docenten:
@@ -294,25 +395,56 @@ EOS
 	} 
 	$totable = array();
 	if (isset($data)) foreach ($data as $a) {
-		$uur = $a['appointment_startTimeSlot'];
-		if ($uur != $a['appointment_endTimeSlot']) fatal('start and end timeslot not the same');
-		$day_number = $a['day'];
+		$uur = $a['f_u'];
+		$day_number = $a['f_d'];
 		$sort = $uur.$day_number;
 		$dag = isodayname($day_number);
-		$valid = $a['appointment_valid'];
-		$cancelled = $a['appointment_cancelled'];
-		$modified = $a['appointment_modified'];
-		$moved = $a['appointment_moved'];
-		$new = $a['appointment_new'];
-		if ($bw = 'b' && (!($modified||$moved||$new) || $cancelled)) {
+		$valid = $a['f_v'];
+		$cancelled = $a['f_c'];
+		$modified = $a['f_m'];
+		$moved = $a['f_o'];
+		$new = $a['f_n'];
+		if ($bw == 'b' && (!($modified||$moved||$new)/*!$valid*/ || $cancelled)) {
+		//if ($bw = 'b' && (($valid && !$new) || !($valid||$new)/*!$valid*/ || $cancelled)) {
 			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
 			$totable[$sort][] = array(
 				'dag' => $dag,
 				'uur' => $uur,
-				'groups' => $a['groups'],
-				'subjects' => $a['subjects'],
-				'teachers' => $a['teachers'],
-				'locations' => $a['locations']
+				'groups' => $a['f_groups'],
+				'subjects' => $a['f_subjects'],
+				'teachers' => $a['f_teachers'],
+				'locations' => $a['f_locations'],
+				'extra' => '',
+				'comment' => '',
+				'appointmentInstanceId' => $a['f_zid']
+			);
+		} else if ($bw == 'w') {
+			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
+			$extra = '';
+			$comment = '';
+			if ($cancelled) {
+				$extra = ' uitval';
+				$comment = '(uitval)';
+			} else if (!$valid) {
+				$extra = ' verplaatstnaar';
+				$comment = '(naar ...)';
+			} else if ($new) {
+				$extra = ' extra';
+				$comment = '(extra)';
+			} else if ($moved||$modified) {
+				$extra = ' verplaatstvan';
+				$comment = '(van ...)';
+			}
+			$totable[$sort][] = array(
+				'dag' => $dag,
+				'uur' => $uur,
+				'groups' => $a['f_groups'],
+				'subjects' => $a['f_subjects'],
+				'teachers' => $a['f_teachers'],
+				'locations' => $a['f_locations'],
+				'extra' => $extra,
+				'comment' => $comment,
+				'appointmentInstanceId' => $a['f_zid']
 			);
 		}
 	}
@@ -333,12 +465,14 @@ $key = $i.$j;
 if (!array_key_exists($key, $totable)) continue;
 foreach($totable[$key] as $les) {
 	$info = array();
+	$extra = $les['extra']; 
+	$comment = $les['comment'];
 	add_lv($info, $les['groups'], $les['subjects']);
 	add($info, $les['teachers']);
 	add($info, $les['locations']);
-	echo('<div class="les">');
-	//echo('<div class="les'.$extra.'">');
-	if (count($info)) echo('<table><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
+	echo('<div class="les'.$extra.'">');
+	if (count($info)) echo('<table title="'.$les['appointmentInstanceId'].'"><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
+	if ($comment) echo('<div class="comment">'.$comment.'</div>');
 	echo('<div class="clear"></div></div>');
 	//print_r($les);
 }
@@ -347,7 +481,7 @@ foreach($totable[$key] as $les) {
 </tr>
 <?php }?>
 </table>
-<?php if (false && $bw == 'w') { ?>
+<?php if ($bw == 'w') { ?>
 <div class="noprint small">Kleurcodes:
 <span class="legenda uitval">&nbsp;</span>&nbsp;uitval,
 <span class="legenda gewijzigd">&nbsp;</span>&nbsp;gewijzigd,

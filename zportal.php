@@ -30,7 +30,8 @@ function zportal_vquery_string($args) {
                 if ($mode == 0) {
                         $key = urlencode($arg);
                 } else if ($mode == 1) {
-			$query[] = $key.'='.urlencode($arg);
+			if (is_array($arg)) $query[] = $key.'='.urlencode(implode(',', $arg));
+			else $query[] = $key.'='.urlencode($arg);
                 } else fatal('impossible value for $mode');
                 $mode = 1 - $mode;
         }

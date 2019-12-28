@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 27, 2019 at 03:01 PM
+-- Generation Time: Dec 29, 2019 at 12:09 AM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -43,18 +43,18 @@ CREATE TABLE `access` (
 CREATE TABLE `appointments` (
   `appointment_id` int(11) NOT NULL,
   `prev_appointment_id` int(11) DEFAULT NULL,
-  `appointment_zid` int(11) NOT NULL,
   `rooster_id` int(11) NOT NULL,
+  `appointment_zid` int(11) NOT NULL,
   `appointment_instance_zid` int(11) NOT NULL,
   `appointment_start` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `appointment_end` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `bos_id` int(11) NOT NULL,
-  `appointment_type` enum('lesson','activity','exam','choice','talk','other') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type_text_id` int(11) NOT NULL,
   `groups_egrp_id` int(11) NOT NULL,
   `subjects_egrp_id` int(11) NOT NULL,
-  `teacers_egrp_id` int(11) NOT NULL,
+  `teachers_egrp_id` int(11) NOT NULL,
   `locations_egrp_id` int(11) NOT NULL,
-  `students_egrp_id` int(11) DEFAULT NULL,
+  `students_egrp_id` int(11) NOT NULL,
   `appointment_optional` tinyint(1) NOT NULL,
   `appointment_valid` tinyint(1) NOT NULL,
   `appointment_cancelled` tinyint(1) NOT NULL,
@@ -64,12 +64,19 @@ CREATE TABLE `appointments` (
   `appointment_locationChanged` tinyint(1) NOT NULL,
   `appointment_timeChanged` tinyint(1) NOT NULL,
   `appointment_moved` tinyint(1) NOT NULL,
+  `appointment_created` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `appointment_hidden` tinyint(1) NOT NULL,
   `appointment_new` tinyint(1) NOT NULL,
   `appointment_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `appointment_appointmentLastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `appointment_startTimeSlot` int(11) NOT NULL,
-  `appointment_endTimeSlot` int(11) NOT NULL,
-  `appointment_changeDescription` text COLLATE utf8mb4_unicode_ci NOT NULL
+  `appointment_startTimeSlot` tinyint(2) DEFAULT NULL,
+  `appointment_endTimeSlot` tinyint(2) DEFAULT NULL,
+  `changeDescription_text_id` int(11) NOT NULL,
+  `startTimeSlotName_text_id` int(11) NOT NULL,
+  `endTimeSlotName_text_id` int(11) NOT NULL,
+  `content_text_id` int(11) NOT NULL,
+  `remark_text_id` int(11) NOT NULL,
+  `schedulerRemark_text_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -173,9 +180,8 @@ CREATE TABLE `roosters` (
   `rooster_id` int(11) NOT NULL,
   `week_id` int(11) NOT NULL,
   `rooster_last_modified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `rooster_last_synced` timestamp NOT NULL DEFAULT current_timestamp(),
   `rooster_ok` int(11) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
 
@@ -187,13 +193,25 @@ CREATE TABLE `sisys` (
   `sisy_id` int(11) NOT NULL,
   `sisy_zid` int(11) NOT NULL,
   `sisy_year` varchar(9) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `sisy_name` varchar(256) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `sisy_school` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `sisy_project` varchar(256) COLLATE utf8mb4_unicode_ci NOT NULL,
   `sisy_archived` tinyint(1) NOT NULL,
   `studentCanViewOwnSchedule` tinyint(1) NOT NULL,
   `studentCanViewProjectSchedules` tinyint(1) NOT NULL,
   `studentCanViewProjectNames` tinyint(1) NOT NULL,
   `employeeCanViewOwnSchedule` tinyint(1) NOT NULL,
   `employeeCanViewProjectSchedules` tinyint(1) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `texts`
+--
+
+CREATE TABLE `texts` (
+  `text_id` int(11) NOT NULL,
+  `text` text COLLATE utf8mb4_unicode_ci NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -232,12 +250,14 @@ CREATE TABLE `weeks` (
   `sisy_id` int(11) DEFAULT NULL,
   `year` smallint(6) NOT NULL,
   `week` tinyint(4) NOT NULL,
-  `monday_unix_timestamp` int(11) NOT NULL,
+  `monday_timestamp` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `ma` tinyint(1) NOT NULL DEFAULT 1,
   `di` tinyint(1) NOT NULL DEFAULT 1,
   `wo` tinyint(1) NOT NULL DEFAULT 1,
   `do` tinyint(1) NOT NULL DEFAULT 1,
-  `vr` tinyint(1) NOT NULL DEFAULT 1
+  `vr` tinyint(1) NOT NULL DEFAULT 1,
+  `week_lock` int(11) NOT NULL DEFAULT 0,
+  `week_last_sync` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -257,11 +277,26 @@ ALTER TABLE `access`
 --
 ALTER TABLE `appointments`
   ADD PRIMARY KEY (`appointment_id`),
-  ADD UNIQUE KEY `appointment_zid` (`appointment_zid`,`rooster_id`),
   ADD KEY `bos_id` (`bos_id`),
-  ADD KEY `rooster_id` (`rooster_id`),
+  ADD KEY `appointment_zid` (`appointment_zid`),
+  ADD KEY `appointment_instance_zid` (`appointment_instance_zid`),
   ADD KEY `prev_appointment_id` (`prev_appointment_id`),
-  ADD KEY `students_egrp_id` (`students_egrp_id`);
+  ADD KEY `rooster_id` (`rooster_id`),
+  ADD KEY `type_text_id` (`type_text_id`),
+  ADD KEY `groups_egrp_id` (`groups_egrp_id`),
+  ADD KEY `subjects_egrp_id` (`subjects_egrp_id`),
+  ADD KEY `teachers_egrp_id` (`teachers_egrp_id`),
+  ADD KEY `locations_egrp_id` (`locations_egrp_id`),
+  ADD KEY `students_egrp_id` (`students_egrp_id`),
+  ADD KEY `startTimeSlotName_text_id` (`startTimeSlotName_text_id`),
+  ADD KEY `changeDescription_text_id` (`changeDescription_text_id`),
+  ADD KEY `endTimeSlotName_text_id` (`endTimeSlotName_text_id`),
+  ADD KEY `content_text_id` (`content_text_id`),
+  ADD KEY `remark_text_id` (`remark_text_id`),
+  ADD KEY `schedulerRemark_text_id` (`schedulerRemark_text_id`),
+  ADD KEY `appointment_instance_zid_2` (`appointment_instance_zid`,`appointment_valid`),
+  ADD KEY `appointment_valid` (`appointment_valid`),
+  ADD KEY `appointment_instance_zid_3` (`appointment_instance_zid`,`appointment_valid`,`appointment_hidden`);
 
 --
 -- Indexes for table `boss`
@@ -332,6 +367,12 @@ ALTER TABLE `roosters`
 ALTER TABLE `sisys`
   ADD PRIMARY KEY (`sisy_id`),
   ADD UNIQUE KEY `sisys_zid` (`sisy_zid`);
+
+--
+-- Indexes for table `texts`
+--
+ALTER TABLE `texts`
+  ADD PRIMARY KEY (`text_id`);
 
 --
 -- Indexes for table `users`
@@ -409,6 +450,11 @@ ALTER TABLE `roosters`
 ALTER TABLE `sisys`
   MODIFY `sisy_id` int(11) NOT NULL AUTO_INCREMENT;
 --
+-- AUTO_INCREMENT for table `texts`
+--
+ALTER TABLE `texts`
+  MODIFY `text_id` int(11) NOT NULL AUTO_INCREMENT;
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
@@ -433,9 +479,21 @@ ALTER TABLE `access`
 --
 ALTER TABLE `appointments`
   ADD CONSTRAINT `appointments_ibfk_1` FOREIGN KEY (`bos_id`) REFERENCES `boss` (`bos_id`),
+  ADD CONSTRAINT `appointments_ibfk_10` FOREIGN KEY (`changeDescription_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_11` FOREIGN KEY (`startTimeSlotName_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_12` FOREIGN KEY (`changeDescription_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_13` FOREIGN KEY (`endTimeSlotName_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_14` FOREIGN KEY (`content_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_15` FOREIGN KEY (`remark_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_16` FOREIGN KEY (`schedulerRemark_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_2` FOREIGN KEY (`prev_appointment_id`) REFERENCES `appointments` (`appointment_id`),
   ADD CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`rooster_id`) REFERENCES `roosters` (`rooster_id`),
-  ADD CONSTRAINT `appointments_ibfk_4` FOREIGN KEY (`prev_appointment_id`) REFERENCES `appointments` (`appointment_id`),
-  ADD CONSTRAINT `appointments_ibfk_5` FOREIGN KEY (`students_egrp_id`) REFERENCES `egrps` (`egrp_id`);
+  ADD CONSTRAINT `appointments_ibfk_4` FOREIGN KEY (`type_text_id`) REFERENCES `texts` (`text_id`),
+  ADD CONSTRAINT `appointments_ibfk_5` FOREIGN KEY (`groups_egrp_id`) REFERENCES `egrps` (`egrp_id`),
+  ADD CONSTRAINT `appointments_ibfk_6` FOREIGN KEY (`subjects_egrp_id`) REFERENCES `egrps` (`egrp_id`),
+  ADD CONSTRAINT `appointments_ibfk_7` FOREIGN KEY (`teachers_egrp_id`) REFERENCES `egrps` (`egrp_id`),
+  ADD CONSTRAINT `appointments_ibfk_8` FOREIGN KEY (`locations_egrp_id`) REFERENCES `egrps` (`egrp_id`),
+  ADD CONSTRAINT `appointments_ibfk_9` FOREIGN KEY (`students_egrp_id`) REFERENCES `egrps` (`egrp_id`);
 
 --
 -- Constraints for table `entities2egrps`

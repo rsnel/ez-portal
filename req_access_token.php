@@ -39,7 +39,7 @@ $expires = dereference($tokeninfo, 'expires');
 set_access_token_cookie($expires, $access_token);
 
 /* add info to database */
-$entity_id = db_get_entity_id($entity_name, 'PERSOON');
+$entity_id = db_get_entity_id(capitalize(htmlenc($entity_name), 'PERSON'), 'PERSOON');
 
 db_exec(<<<EOQ
 INSERT INTO access ( access_token, entity_id, access_expires ) VALUES ( ?, ?, FROM_UNIXTIME(?) )

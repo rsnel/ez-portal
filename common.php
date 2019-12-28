@@ -63,15 +63,6 @@ if (!is_writable(config('DATADIR')) || !is_readable(config('DATADIR')))
 
 date_default_timezone_set(config('TIMEZONE'));
 
-/*
-function get_sisyinfo() {
-	$sisyinfo = db_single_row("SELECT * FROM sisys WHERE sisy_zid = ?", config('SISY'));
-	if ($sisyinfo == NULL || dereference($sisyinfo, 'sisy_archived')) fatal('geconfigureerd schooljaar bestaat niet of is gearchiveerd');
-
-	return $sisyinfo;
-}
- */
-
 function vchecksetarray($base, $keys) {
 	if (!is_array($base)) return false;
         foreach ($keys as $key) {
@@ -83,7 +74,7 @@ function vchecksetarray($base, $keys) {
 
 function dereference($array, $key) {
 	if (!is_array($array)) fatal('$array is not an array');
-	if (!array_key_exists($key, $array)) fatal("key $key does not exist in \$array");
+	if (!array_key_exists($key, $array)) fatal("key ->$key<- does not exist in \$array");
 
 	$args = func_get_args();
         array_shift($args); array_shift($args);
@@ -214,13 +205,12 @@ function update_sisy_function($function) {
 
 	db_exec(<<<EOQ
 UPDATE sisys
-SET sisy_name = ?, studentCanViewOwnSchedule = ?,
+SET studentCanViewOwnSchedule = ?,
 	studentCanViewProjectSchedules = ?, studentCanViewProjectNames = ?,
 	employeeCanViewOwnSchedule = ?, employeeCanViewProjectSchedules = ?
 WHERE sisy_id = $sisy_id
 EOQ
-		,htmlenc(dereference($function, 'schoolInSchoolYearName')),
-		dereference($function, 'studentCanViewOwnSchedule'),
+		, dereference($function, 'studentCanViewOwnSchedule'),
 		dereference($function, 'studentCanViewProjectSchedules'),
 		dereference($function, 'studentCanViewProjectNames'),
 		dereference($function, 'employeeCanViewOwnSchedule'),
@@ -233,10 +223,11 @@ function update_sisy($sisyinfo) {
 	$sisy_id = db_get_id('sisy_id', 'sisys', 'sisy_zid', $sisy_zid);
 
 	db_exec(<<<EOQ
-UPDATE sisys SET sisy_year = ?, sisy_name = ?, sisy_archived = ? WHERE sisy_id = $sisy_id
+UPDATE sisys SET sisy_year = ?, sisy_school = ?, sisy_project = ?, sisy_archived = ? WHERE sisy_id = $sisy_id
 EOQ
 		, dereference($sisyinfo, 'year'),
-		htmlenc(dereference($sisyinfo, 'name')),
+		htmlenc(dereference($sisyinfo, 'schoolName')),
+		htmlenc(dereference($sisyinfo, 'projectName')),
 		dereference($sisyinfo, 'archived'));
 	
 }
@@ -389,7 +380,7 @@ function get_access_info() {
 		$access_token = $_COOKIE['access_token'];
 
 		/* do we know this token? */
-		$access_info = db_single_row("SELECT * FROM access JOIN entities USING (entity_id) WHERE access_token = ?",
+		$access_info = db_single_row("SELECT * FROM access JOIN entities USING (entity_id) JOIN users USING (entity_id) WHERE access_token = ?",
 				$access_token);
 
 		if ($access_info === NULL) {
@@ -459,7 +450,7 @@ function update_weeks_of_sisy($sisy_id, $startYear) {
 		}
 		$weken[] = array ( 'year' => $year, 'week' => date("W", $thursday), 'monday' => $first, 'ma' => $status[0], 'di' => $status[1], 'wo' => $status[2], 'do' => $status[3], 'vr' => $status[4]);
 		$week_id = db_get_id('week_id', 'weeks', 'year', $year, 'week', date("W", $thursday));
-		db_exec("UPDATE weeks SET sisy_id = ?, monday_unix_timestamp = ?, ma = ?, di = ?, wo = ?, do = ?, vr = ? WHERE week_id = ?", $sisy_id, $first, $status[0], $status[1], $status[2], $status[3], $status[4], $week_id);
+		db_exec("UPDATE weeks SET sisy_id = ?, monday_timestamp = FROM_UNIXTIME(?), ma = ?, di = ?, wo = ?, do = ?, vr = ? WHERE week_id = ?", $sisy_id, $first, $status[0], $status[1], $status[2], $status[3], $status[4], $week_id);
 		$thursday = strtotime('+1 week', $thursday);
 	} while(1);
 }
@@ -477,44 +468,97 @@ EOQ
 	, $version);
 }
 
-function master_query($entity_ids, $kind, $rooster_ids) {
-	/* kind must be 'locations', 'groups', 'subjects' or 'teachers' */
-	$kinds = array('locations', 'groups', 'subjects', 'teachers');
-	$idx = array_search($kind, $kinds);
-	if ($idx === false) fatal("illegal value of kind");
-	unset($kinds[$idx]);
-	$join = '';
-	$select = '';
-	$select2 = '';
-	foreach ($kinds as $also) {
-		$join .= <<<EOJ
-JOIN (
-	SELECT egrp_id {$also}_egrp_id, egrp $also FROM egrps
-) AS $also USING ({$also}_egrp_id)
-EOJ;
-		$select .= ", $also.*";
-		$select2 .= ", {$also}_egrp_id";
-	}
-	return db_all_assoc_rekey(<<<EOQ
-SELECT filtered_appointments.*$select, WEEKDAY(appointment_start) + 1 day
-FROM (
-        SELECT appointments.*, egrp $kind$select2
+function lln_query($entity_ids, $rooster_ids) {
+	return db_single_field(<<<EOQ
+SELECT GROUP_CONCAT(DISTINCT entity_id) FROM (
+        SELECT DISTINCT students_egrp_id AS egrp_id
         FROM appointments
         LEFT JOIN (
                 SELECT prev_appointment_id appointment_id, appointment_id obsolete
                 FROM appointments
                 WHERE rooster_id IN ( $rooster_ids )
         ) next_appointments USING ( appointment_id )
-        JOIN agstds USING (agstd_id)
-        JOIN entities2egrps ON entities2egrps.egrp_id = agstds.{$kind}_egrp_id
-        JOIN egrps AS $kind USING (egrp_id)
+        JOIN entities2egrps ON entities2egrps.egrp_id = appointments.groups_egrp_id
+        JOIN egrps AS groups USING (egrp_id)
         WHERE appointments.rooster_id IN ( $rooster_ids )
-        AND obsolete IS NULL
+        AND obsolete IS NULL AND appointment_hidden = 0
         AND entity_id IN ( ? )
-) AS filtered_appointments
-$join
+) AS tmp
+JOIN entities2egrps USING (egrp_id)
 EOQ
 	, $entity_ids);
+}
+
+function master_query($entity_ids, $kind, $rooster_ids) {
+	/* kind must be 'locations', 'groups', 'subjects', 'teachers' or 'students' */
+	$kinds = array('locations', 'groups', 'subjects', 'teachers');
+	if ($kind != 'students') {
+		$idx = array_search($kind, $kinds);
+		if ($idx === false) fatal("illegal value of kind");
+		unset($kinds[$idx]);
+		$xtraselect = ', f_a.'.$kind.' f_'.$kind;
+	} else $xtraselect = '';
+	$join = '';
+	$select = '';
+	$select2 = '';
+	$select3 = '';
+	foreach ($kinds as $also) {
+		$join .= <<<EOJ
+JOIN (
+	SELECT egrp_id f_{$also}_egrp_id, egrp $also FROM egrps
+) AS $also USING (f_{$also}_egrp_id)
+
+EOJ;
+		$select .= ", $also.$also f_$also";
+		$select2 .= ", {$also}_egrp_id f_{$also}_egrp_id";
+		$select3 .= ", {$also}_egrp_id s_{$also}_egrp_id";
+	}
+	return db_query(<<<EOQ
+SELECT f_id, f_zid, f_d, f_u, f_v, f_c, f_m, f_o, f_n, f_$kind$select
+-- , s_id, s_zid
+-- , s_d, s_u, s_v, s_c, s_m, s_o, s_n
+FROM (
+	SELECT DISTINCT appointment_id f_id, appointment_instance_zid f_zid, WEEKDAY(appointment_start) + 1 f_d,
+		appointment_startTimeSlot f_u, appointment_valid f_v,
+		appointment_cancelled f_c, appointment_modified f_m,
+		appointment_moved f_o, appointment_new f_n, egrp f_$kind$select2
+        FROM appointments
+        LEFT JOIN (
+                SELECT prev_appointment_id appointment_id, appointment_id obsolete
+                FROM appointments
+                WHERE rooster_id IN ( $rooster_ids )
+        ) next_appointments USING ( appointment_id )
+        JOIN entities2egrps ON entities2egrps.egrp_id = appointments.{$kind}_egrp_id
+        JOIN egrps AS $kind USING (egrp_id)
+        WHERE appointments.rooster_id IN ( $rooster_ids )
+	AND appointment_startTimeSlot = appointment_endTimeSlot
+        AND obsolete IS NULL AND appointment_hidden = 0
+        AND entity_id IN ( $entity_ids )
+) AS f_a
+$join
+-- LEFT JOIN (
+-- 	SELECT appointment0_id AS f_id, appointment1_id AS s_id FROM pairs
+-- 	LEFT JOIN (
+-- 		SELECT prev_pair_id AS pair_id, pair_id obsolete
+-- 		FROM pairs
+-- 		WHERE rooster_id IN ( $rooster_ids )
+-- 	) AS next_pairs USING (pair_id)
+-- 	WHERE rooster_id IN ( $rooster_ids ) AND obsolete IS NULL
+-- 	UNION
+-- 	SELECT appointment1_id, appointment0_id FROM pairs
+-- 	LEFT JOIN (
+-- 		SELECT prev_pair_id AS pair_id, pair_id obsolete
+-- 		FROM pairs
+-- 		WHERE rooster_id IN ( $rooster_ids )
+-- 	) AS next_pairs USING (pair_id)
+-- 	WHERE rooster_id IN ( $rooster_ids ) AND obsolete IS NULL
+-- ) AS pairs USING (f_id)
+-- LEFT JOIN (
+-- 	SELECT appointment_id AS s_id, appointment_instance_zid AS s_zid,
+--  FROM appointments
+-- ) AS s_a USING (s_id)
+EOQ
+	);
 }
 
 // warn when there are doubly named things
@@ -581,11 +625,23 @@ function capitalize_location($name) {
 	return capitalize($name, 'LOKAAL');
 }
 
-function search_on_zid($entity_zid) {
-	$out = db_single_field("SELECT entity_name FROM entities WHERE entity_zid = ?",
-		$entity_zid);
+function search_on_zid($entity_zid, $type) {
+	if ($type == 'location') $where = " AND entity_type = 'LOKAAL'";
+	else if ($type == 'group')
+	       	$where = " AND ( entity_type = 'STAMKLAS' OR entity_type = 'LESGROEP' )";
+	else fatal("impossible request to search_on_zid");
+
+	$out = db_single_field("SELECT entity_name FROM entities JOIN entity_zids USING (entity_id) WHERE entity_zid = ?$where", $entity_zid);
 	if (!$out) fatal("entity with entity_zid = $entity_zid not found");
 	return $out;
+}
+
+function search_location_on_zid($entity_zid) {
+	return search_on_zid($entity_zid, 'location');
+}
+
+function search_group_on_zid($entity_zid) {
+	return search_on_zid($entity_zid, 'group');
 }
 
 function search_teacher($entity_name) {
@@ -601,6 +657,11 @@ function search_on_name($entity_name) {
 		$entity_name);
 	if (!$out) fatal("entity with entity_zid = $entity_name not found");
 	return $out;
+}
+
+function db_get_text_id($text) {
+	if ($text === NULL) $text = '';
+	return db_get_id('text_id', 'texts', 'text', $text);
 }
 
 function db_get_egrp_id($entities, $search_func) {
