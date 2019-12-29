@@ -186,6 +186,34 @@ function db_exec($query) {
 	return db_vexec($query, $args);
 }
 
+function db_get_id_new($id_name, $table) {
+	$args = func_get_args();
+	array_shift($args);
+	array_shift($args);
+
+	$argc = count($args);
+
+	if ($argc%2) fatal('number of args to db_get_id after $table must be even');
+
+	// build "INSERT SET ... ON DUPLICATE KEY UPDATE $id_name = LAST_INSERT_ID($id_name) ..."
+	$set = array();
+	$values = array();
+	for ($i = 0; $i < $argc; $i += 2) {
+		$set[] =& $args[$i];
+		if ($args[$i+1]) $values[] =& $args[$i+1];
+	}
+	
+	$set = implode(', ', $set);
+	$values = array_merge($values, $values);
+	db_vexec(<<<EOQ
+INSERT INTO $table SET $set
+ON DUPLICATE KEY UPDATE $id_name = LAST_INSERT_ID($id_name), $set
+EOQ
+	, $values);
+
+	return db_last_insert_id();
+}
+
 function db_get_id($id_name, $table) {
 	$args = func_get_args();
 	array_shift($args);
@@ -196,6 +224,7 @@ function db_get_id($id_name, $table) {
 	if ($argc%2) fatal('number of args to db_get_id after $table must be even');
 
 	// build insert and select queries
+
 	$insert = $id_name.' = NULL';
 	$select = 'TRUE';
 	$values = array();
