@@ -25,7 +25,7 @@ function html_start($title = '', $script = '') {
 </script>
 <?php } ?>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?=$title?> ez-roosterbord</title>
+<title><?=$title?> ez-portal</title>
 </head>
 <body>
 <div class="flex-wrapper">
@@ -42,7 +42,7 @@ function html_end() {
 <img src="images/AGPLv3_Logo.svg">
 </div>
 <div id="footertext">
-<a href="https://ez-roosterbord.nl/ez-portal/">ez-portal</a><?=$version_copy?> Rik Snel &lt;rik@snel.it&gt;, Favicons (<a href="https://commons.wikimedia.org/wiki/File:Ernst_Zermelo_1900s.jpg">source</a>) are in the public domain.<br>
+<a href="https://ez-portal.nl/">ez-portal</a><?=$version_copy?> Rik Snel &lt;rik@snel.it&gt;, Favicons (<a href="https://commons.wikimedia.org/wiki/File:Ernst_Zermelo_1900s.jpg">source</a>) are in the public domain.<br>
 Released as <a href="http://www.gnu.org/philosophy/free-sw.html">free software</a> without warranties under <a href="http://www.fsf.org/licensing/licenses/agpl-3.0.html">GNU AGPL v3</a>.  Powered by PHP <?=phpversion()?>.<br>
 Sourcecode: git clone <a href="https://github.com/rsnel/ez-portal/">https://github.com/rsnel/ez-portal/</a>
 </div>
