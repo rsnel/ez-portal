@@ -44,3 +44,6 @@ een rooster is een basisrooster alles alle unhidden lessen in dat rooster
 SELECT appointment_zid, appointment_instance_zid, appointment_created, appointment_lastModified, appointment_appointmentLastModified FROM `appointments` ORDER BY appointment_zid
 :wq
 
+Brian eigen: https://imgflip.com/i/3krbxe https://i.imgflip.com/3krbxe.jpg
+Brian niet: https://imgflip.com/i/3krczb https://i.imgflip.com/3krczb.jpg
+

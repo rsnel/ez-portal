@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 29, 2019 at 12:09 AM
+-- Generation Time: Dec 30, 2019 at 11:06 AM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -42,40 +42,16 @@ CREATE TABLE `access` (
 
 CREATE TABLE `appointments` (
   `appointment_id` int(11) NOT NULL,
-  `prev_appointment_id` int(11) DEFAULT NULL,
-  `rooster_id` int(11) NOT NULL,
-  `appointment_zid` int(11) NOT NULL,
-  `appointment_instance_zid` int(11) NOT NULL,
-  `appointment_start` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `appointment_end` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `appointment_day` tinyint(1) NOT NULL,
+  `appointment_time` time NOT NULL,
+  `appointment_timeSlot` tinyint(2) NOT NULL,
+  `appointment_duration` int(11) NOT NULL,
   `bos_id` int(11) NOT NULL,
   `type_text_id` int(11) NOT NULL,
   `groups_egrp_id` int(11) NOT NULL,
   `subjects_egrp_id` int(11) NOT NULL,
   `teachers_egrp_id` int(11) NOT NULL,
   `locations_egrp_id` int(11) NOT NULL,
-  `students_egrp_id` int(11) NOT NULL,
-  `appointment_optional` tinyint(1) NOT NULL,
-  `appointment_valid` tinyint(1) NOT NULL,
-  `appointment_cancelled` tinyint(1) NOT NULL,
-  `appointment_modified` tinyint(1) NOT NULL,
-  `appointment_teacherChanged` tinyint(1) NOT NULL,
-  `appointment_groupChanged` tinyint(1) NOT NULL,
-  `appointment_locationChanged` tinyint(1) NOT NULL,
-  `appointment_timeChanged` tinyint(1) NOT NULL,
-  `appointment_moved` tinyint(1) NOT NULL,
-  `appointment_created` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `appointment_hidden` tinyint(1) NOT NULL,
-  `appointment_new` tinyint(1) NOT NULL,
-  `appointment_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `appointment_appointmentLastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-  `appointment_startTimeSlot` tinyint(2) DEFAULT NULL,
-  `appointment_endTimeSlot` tinyint(2) DEFAULT NULL,
-  `changeDescription_text_id` int(11) NOT NULL,
-  `startTimeSlotName_text_id` int(11) NOT NULL,
-  `endTimeSlotName_text_id` int(11) NOT NULL,
-  `content_text_id` int(11) NOT NULL,
-  `remark_text_id` int(11) NOT NULL,
   `schedulerRemark_text_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -180,6 +156,7 @@ CREATE TABLE `roosters` (
   `rooster_id` int(11) NOT NULL,
   `week_id` int(11) NOT NULL,
   `rooster_last_modified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `rooster_type` enum('basis','week') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `rooster_ok` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
@@ -277,26 +254,14 @@ ALTER TABLE `access`
 --
 ALTER TABLE `appointments`
   ADD PRIMARY KEY (`appointment_id`),
+  ADD UNIQUE KEY `appointment_day` (`appointment_day`,`appointment_time`,`appointment_timeSlot`,`appointment_duration`,`bos_id`,`type_text_id`,`groups_egrp_id`,`subjects_egrp_id`,`teachers_egrp_id`,`locations_egrp_id`,`schedulerRemark_text_id`),
   ADD KEY `bos_id` (`bos_id`),
-  ADD KEY `appointment_zid` (`appointment_zid`),
-  ADD KEY `appointment_instance_zid` (`appointment_instance_zid`),
-  ADD KEY `prev_appointment_id` (`prev_appointment_id`),
-  ADD KEY `rooster_id` (`rooster_id`),
   ADD KEY `type_text_id` (`type_text_id`),
   ADD KEY `groups_egrp_id` (`groups_egrp_id`),
-  ADD KEY `subjects_egrp_id` (`subjects_egrp_id`),
   ADD KEY `teachers_egrp_id` (`teachers_egrp_id`),
   ADD KEY `locations_egrp_id` (`locations_egrp_id`),
-  ADD KEY `students_egrp_id` (`students_egrp_id`),
-  ADD KEY `startTimeSlotName_text_id` (`startTimeSlotName_text_id`),
-  ADD KEY `changeDescription_text_id` (`changeDescription_text_id`),
-  ADD KEY `endTimeSlotName_text_id` (`endTimeSlotName_text_id`),
-  ADD KEY `content_text_id` (`content_text_id`),
-  ADD KEY `remark_text_id` (`remark_text_id`),
   ADD KEY `schedulerRemark_text_id` (`schedulerRemark_text_id`),
-  ADD KEY `appointment_instance_zid_2` (`appointment_instance_zid`,`appointment_valid`),
-  ADD KEY `appointment_valid` (`appointment_valid`),
-  ADD KEY `appointment_instance_zid_3` (`appointment_instance_zid`,`appointment_valid`,`appointment_hidden`);
+  ADD KEY `subjects_egrp_id` (`subjects_egrp_id`) USING BTREE;
 
 --
 -- Indexes for table `boss`
@@ -479,21 +444,12 @@ ALTER TABLE `access`
 --
 ALTER TABLE `appointments`
   ADD CONSTRAINT `appointments_ibfk_1` FOREIGN KEY (`bos_id`) REFERENCES `boss` (`bos_id`),
-  ADD CONSTRAINT `appointments_ibfk_10` FOREIGN KEY (`changeDescription_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_11` FOREIGN KEY (`startTimeSlotName_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_12` FOREIGN KEY (`changeDescription_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_13` FOREIGN KEY (`endTimeSlotName_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_14` FOREIGN KEY (`content_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_15` FOREIGN KEY (`remark_text_id`) REFERENCES `texts` (`text_id`),
   ADD CONSTRAINT `appointments_ibfk_16` FOREIGN KEY (`schedulerRemark_text_id`) REFERENCES `texts` (`text_id`),
-  ADD CONSTRAINT `appointments_ibfk_2` FOREIGN KEY (`prev_appointment_id`) REFERENCES `appointments` (`appointment_id`),
-  ADD CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`rooster_id`) REFERENCES `roosters` (`rooster_id`),
   ADD CONSTRAINT `appointments_ibfk_4` FOREIGN KEY (`type_text_id`) REFERENCES `texts` (`text_id`),
   ADD CONSTRAINT `appointments_ibfk_5` FOREIGN KEY (`groups_egrp_id`) REFERENCES `egrps` (`egrp_id`),
-  ADD CONSTRAINT `appointments_ibfk_6` FOREIGN KEY (`subjects_egrp_id`) REFERENCES `egrps` (`egrp_id`),
   ADD CONSTRAINT `appointments_ibfk_7` FOREIGN KEY (`teachers_egrp_id`) REFERENCES `egrps` (`egrp_id`),
   ADD CONSTRAINT `appointments_ibfk_8` FOREIGN KEY (`locations_egrp_id`) REFERENCES `egrps` (`egrp_id`),
-  ADD CONSTRAINT `appointments_ibfk_9` FOREIGN KEY (`students_egrp_id`) REFERENCES `egrps` (`egrp_id`);
+  ADD CONSTRAINT `appointments_ibfk_9` FOREIGN KEY (`subjects_egrp_id`) REFERENCES `egrps` (`egrp_id`);
 
 --
 -- Constraints for table `entities2egrps`

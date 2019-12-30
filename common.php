@@ -7,7 +7,8 @@ $config_defaults = array(
 	'MAX_LESUUR' => '9',
 	'NAMES_BUG' => 'none',
 	'TIMEZONE' => 'Europe/Amsterdam',
-	'CAPITALIZE' => 'none'
+	'CAPITALIZE' => 'none',
+	'RESPECT_HOLIDAYS' => 'true'
 );
 
 // fatal() is for system errors that should not happen during usage
@@ -590,7 +591,7 @@ function capitalize_ovc($name, $type) {
 		//
 		if (strlen($name) == 4) return strtoupper($name);
 		return strtolower($name);
-	case 'LESGROEP': /* werkt ook voor stamklas */
+	case 'LESGROEP': /* werkt ook voor stamklas, als de categorie er niet aan zit... */
 		if (!preg_match('/^(.*)\.(.*?)(\d+)?$/', $name, $matches)) return strtoupper($name);
 		if (!isset($matches[3])) $matches[3] = '';
 		return strtoupper($matches[1]).'.'.capitalize_ovc($matches[2], 'VAK').$matches[3];
@@ -677,6 +678,23 @@ function db_get_egrp_id($entities, $search_func) {
 function functionalsort($array) {
 	sort($array);
 	return $array;
+}
+
+function get_rooster_type($week_id, $rooster_version) {
+	//echo("week_id=$week_id, rooster_version=$rooster_version\n");
+	$bool = db_single_field(<<<EOQ
+SELECT BIT_OR(appointment_state != 'normal' OR !appointment_valid)
+FROM log
+LEFT JOIN (
+	SELECT prev_log_id AS log_id, log_id AS obsolete
+	FROM log
+	WHERE week_id = ? AND rooster_version <= ?
+) next_log USING (log_id)
+WHERE week_id = ? AND rooster_version <= ? AND obsolete IS NULL
+EOQ
+		, $week_id, $rooster_version, $week_id, $rooster_version);
+	if ($bool) return 'week';
+	else return 'basis';
 }
 
 ?>

@@ -200,16 +200,22 @@ function db_get_id_new($id_name, $table) {
 	$values = array();
 	for ($i = 0; $i < $argc; $i += 2) {
 		$set[] =& $args[$i];
-		if ($args[$i+1]) $values[] =& $args[$i+1];
+		if (strpos($args[$i], '?') !== false) $values[] =& $args[$i+1];
 	}
 	
+	$where = implode(' AND ', $set);
 	$set = implode(', ', $set);
-	$values = array_merge($values, $values);
+	$double = array_merge($values, $values);
+	$id = db_vsingle_field("SELECT $id_name FROM $table WHERE $where", $values);
+	if ($id) return $id;
+
+	// while the row was not found, someone else could have inserted it this moment
+	// so, we still allow it to exist (and get the id also in that case)
 	db_vexec(<<<EOQ
 INSERT INTO $table SET $set
 ON DUPLICATE KEY UPDATE $id_name = LAST_INSERT_ID($id_name), $set
 EOQ
-	, $values);
+	, $double);
 
 	return db_last_insert_id();
 }
@@ -235,6 +241,7 @@ function db_get_id($id_name, $table) {
 		$values[] = &$args[$i+1];
 	}
 
+	// this locking does not work ... FIXME, use db_get_id_new
 	db_direct("LOCK TABLES $table WRITE");
 	$id = db_vsingle_field('SELECT '.$id_name.' FROM '.$table.' WHERE '.$select, $values);
 	if (!$id) {

@@ -53,10 +53,15 @@ if (!$sisy['employeeCanViewProjectSchedules'])
 	fatal('geen toegang tot projectSchedule als employee');
 
 
-$weeks = db_all_assoc_rekey('SELECT *, UNIX_TIMESTAMP(monday_timestamp) start FROM weeks WHERE sisy_id = ? ORDER BY year, week', $sisy_id);
-print_r($weeks);
+$respect_holidays='';
+if (config('RESPECT_HOLIDAYS') == 'true') {
+	$respect_holidays = ' AND ( ma OR di OR wo OR do OR vr )';
+}
+
+$weeks = db_all_assoc_rekey("SELECT *, UNIX_TIMESTAMP(monday_timestamp) start FROM weeks WHERE sisy_id = ?$respect_holidays ORDER BY year, week", $sisy_id);
+//print_r($weeks);
 foreach ($weeks as $week_id => $week) {
-	if ($week_id > 161) exit;
+	//if ($week_id > 161) exit;
 	print_r($week);
 
 	$start = $week['start'];
@@ -89,19 +94,33 @@ EOQ
 		$json = zportal_GET_data_cached('appointments', 'includeHidden', 'true',
 			'start', $start, 'end', $end, 'fields', $fields, 'schoolInSchoolYear', 351);
 	} else if (!$rooster['ok']) {
+		//echo("testing testing, er is een mislukte roosterupdate, jump to end\n");
+		//$rooster_id = $rooster['max_rooster_id'];
+		//goto testing;
 		fatal("er is een mislukte rooster update in week_id=$week_id, {$week['year']}{$week['week']}");
 	} else {
 		$rooster_version = $rooster['version'] + 1; // new version
-		fatal("updaten bestaand rooster nog niet geimplementeerd");
+		echo("updaten bestaand rooster nog niet geimplementeerd\n");
+		goto finished;
 	}
+
+	if (db_single_field('SELECT COUNT(*) FROM log WHERE rooster_version = ? AND week_id = ?', $rooster_version, $week_id)) fatal("impossible! info about this version is already found in table");
 
 	if (!count($json)) goto finished;
 
-	//db_exec('INSERT INTO roosters ( week_id ) VALUES ( ? )', $week_id);
-	//$rooster_id = db_last_insert_id();
+	// the ordering of the data from the portal has some internal logic to it,
+	// PRESERVE the ordering! it does not seem to be ordered on any visible field
+	// this requires further research:
+	// - what is the meaning of lastModified if updates are not ordered by it?
+	// - is lastUpdate not changed if an appointment becomes invalid?
+	//   (and if so: how does the system know that it needs to send it?)
+
+	db_exec('INSERT INTO roosters ( week_id ) VALUES ( ? )', $week_id);
+	$rooster_id = db_last_insert_id();
+	$ultimate_lastModified = 0;
 	echo("working in rooster_id=$rooster_id\n");
 	foreach ($json as $a) { // view all appointments
-		echo("id=".dereference($a, 'id').' instance='.dereference($a, 'appointmentInstance').' lastModified='.dereference($a, 'lastModified').' appointmentLastModified='.dereference($a, 'appointmentLastModified').' hidden='.dereference($a, 'hidden')."\n");
+		echo("id=".dereference($a, 'id').' instance='.dereference($a, 'appointmentInstance').' lastModified='.dereference($a, 'lastModified').' created='.dereference($a, 'created').' hidden='.dereference($a, 'hidden')."\n");
 
 		$groupsInDepartments = dereference($a, 'groupsInDepartments');
 		$locationsOfBranch = dereference($a, 'locationsOfBranch');
@@ -183,22 +202,98 @@ EOQ
 
 		if ($hidden) {
 			// no previous version found to hide, store the hidden
-			// appointment nevertheless
-			db_exec('INSERT INTO log ( week_id, appointment_id, appointment_zid, appointment_instance_zid, appointment_state, appointment_valid, appointment_created, appointment_lastModified, appointment_appointmentLastModified ) VALUES ( ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), FROM_UNIXTIME(?) )', $week_id, $appointment_id, $zid, $instance_zid, $state, $valid, $created, $lastModified, $appointmentLastModified);
-		} 
+			// appointment for reference and hide it immediately
+
+			db_exec(<<<EOQ
+INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id, appointment_zid,
+	appointment_instance_zid, appointment_state, appointment_valid, appointment_created,
+	appointment_lastModified, appointment_appointmentLastModified, students_egrp_id )
+VALUES (             NULL,    ?, NULL,    ?,    ?,    ?,    ?,    ?,    FROM_UNIXTIME(?), NULL, NULL, ? )
+EOQ
+				, $week_id, $appointment_id, $zid, $instance_zid, $state,
+				$valid, $created, $students_egrp_id );
+			$prev_log_id = db_last_insert_id();
+			db_exec(<<<EOQ
+INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id, appointment_zid,
+	appointment_instance_zid, appointment_state, appointment_valid, appointment_created,
+	appointment_lastModified, appointment_appointmentLastModified )
+VALUES ( ?,    ?,    ?, NULL, NULL, NULL, NULL, NULL, NULL,    FROM_UNIXTIME(?),    FROM_UNIXTIME(?) )
+EOQ
+				, $prev_log_id, $week_id,
+				$rooster_version, $lastModified, $appointmentLastModified);
+
+		}  else {
+			db_exec(<<<EOQ
+INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id, appointment_zid,
+	appointment_instance_zid, appointment_state, appointment_valid, appointment_created,
+	appointment_lastModified, appointment_appointmentLastModified, students_egrp_id )
+VALUES ( NULL, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), FROM_UNIXTIME(?), ? )
+EOQ
+				, $week_id, $rooster_version, $appointment_id, $zid,
+				$instance_zid, $state, $valid, $created,
+				$lastModified, $appointmentLastModified, $students_egrp_id );
+		}
 		
-
-
-	//$next_lastModified = dereference($appointment, 'lastModified');
-	//if ($next_lastModified > $lastModified) $lastModified = $next_lastModified; 
-
+		if ($lastModified > $ultimate_lastModified) $ultimate_lastModified = $lastModified;
 	}
+
+testing:
+	// find pairings
+	$list = db_all_assoc(<<<EOQ
+SELECT appointment_id id, appointment_instance_zid zid, appointment_valid valid
+FROM log
+LEFT JOIN (
+	SELECT prev_log_id AS log_id, log_id AS obsolete
+	FROM log
+	WHERE rooster_version <= ? AND week_id = ?
+) AS next_log USING ( log_id )
+WHERE appointment_id IS NOT NULL AND obsolete IS NULL AND rooster_version <= ? AND week_id = ?
+ORDER BY appointment_instance_zid, appointment_id
+EOQ
+		, $rooster_version, $week_id, $rooster_version, $week_id);
+
+	$pairs = db_all_assoc_rekey(<<<EOQ
+SELECT appointment0_id, appointment1_id, pair_id
+FROM pairs
+LEFT JOIN (
+	SELECT prev_pair_id pair_id, pair_id obsolete
+	FROM pairs
+	WHERE rooster_version <= ? AND week_id = ?
+) AS next_pairs USING (pair_id)
+WHERE obsolete IS NULL AND rooster_version <= ? AND week_id = ?
+EOQ
+		, $rooster_version, $week_id, $rooster_version, $week_id);
+	
+	//print_r($list);
+	//print_r($pairs);
+	if (!$list || count($list) == 0) goto check_weekbasis;
+
+	$b = array_shift($list);
+
+	foreach ($list as $a) {
+		if ($a['zid'] == $b['zid']) {
+			echo("match {$a['id']} <-> {$b['id']} ({$a['valid']}{$b['valid']})\n");
+			if (!isset($pairs[$b['id']])) {
+				unset($pairs[$b['id']]);
+				db_exec('INSERT INTO pairs ( week_id, rooster_version, appointment0_id, appointment1_id ) VALUES ( ?, ?, ?, ? )', $week_id, $rooster_version, $b['id'], $a['id']);
+			} else if ($pairs[$b['id']]['appointment1_id'] == $a['id']) {
+				// ok, already available
+			} else {
+				db_exec('INSERT INTO pairs ( prev_pair_id, week_id, rooster_version, appointment0_id, appointment1_id ) VALUES ( ?, ?, ?, ?, ? )', $pairs[$b['id']]['pair_id'], $week_id, $rooster_version, $b['id'], $a['id']);
+			}
+		}
+		$b = $a;
+	}
+	
+check_weekbasis:
+	$type = get_rooster_type($week_id, $rooster_version);
 
 finished:
 	// finished!
 	// set sync time and release rooster version(s) atomically
 	if ($rooster_id) { // did we actually update something ?
-		fatal("finishing cleanly after update not implemented yet");
+		//fatal("finishing cleanly after update not implemented yet");
+		db_exec('UPDATE roosters JOIN weeks USING (week_id) SET rooster_ok = 1, rooster_type = ?, rooster_last_modified = FROM_UNIXTIME( ? ), week_last_sync = FROM_UNIXTIME( ? ) WHERE rooster_id = ?', $type, $ultimate_lastModified, $week_last_sync, $rooster_id);
 	} else {
 		db_exec('UPDATE weeks SET week_last_sync = FROM_UNIXTIME( ? ) WHERE week_id = ?',
 			$week_last_sync, $week_id);
