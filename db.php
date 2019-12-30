@@ -196,6 +196,9 @@ function db_get_id_new($id_name, $table) {
 	if ($argc%2) fatal('number of args to db_get_id after $table must be even');
 
 	// build "INSERT SET ... ON DUPLICATE KEY UPDATE $id_name = LAST_INSERT_ID($id_name) ..."
+	// this query leads to holes in the id range ON DUPLICATE KEY,
+	// so we try to find the record with a normal SELECT, once that fails, we
+	// do the INSERT
 	$set = array();
 	$values = array();
 	for ($i = 0; $i < $argc; $i += 2) {

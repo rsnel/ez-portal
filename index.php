@@ -140,7 +140,11 @@ else $_GET['q'] = trim($_GET['q']);
 $qs = explode(',', $_GET['q']);
 
 $result = db_single_row("SELECT * FROM entities WHERE entity_name = ?", $qs[0]);
-if (!$result) {
+if ($qs[0] == '*') {
+	$entity_type = '*';
+	$entity_name = '*';
+	$entity_id = NULL;
+} else if (!$result) {
 	$safe_id = '';
 	$entity_type = '';
 	$entity_name = '';
@@ -205,11 +209,11 @@ EOQ
 	, $sisy_id, $bos_id);
 
 	goto cont;
+} else {
+	$entity_type = $result['entity_type'];
+	$entity_name = $result['entity_name'];
+	$entity_id = $result['entity_id'];
 }
-
-$entity_type = $result['entity_type'];
-$entity_name = $result['entity_name'];
-$entity_id = $result['entity_id'];
 
 $entity_multiple = 0;
 
@@ -249,7 +253,7 @@ case 'CATEGORIE':
 case 'LOKAAL':
 	if ($entity_multiple) $type = 'lokalen '.$entity_name;
 	else $type = 'lokaal '.$entity_name;
-	$data = master_query($entity_id, 'locations', $rooster_ids);
+	$data = master_query($entity_id, 'locations', $rooster_version, $week_id);
 	break;
 case 'PERSOON':
 	$isWhat = db_single_row("SELECT * FROM users WHERE entity_id = ?", $entity_id);
@@ -262,23 +266,26 @@ case 'PERSOON':
 	}
 	if ($isWhat['isEmployee']) {
 		$data = master_query($entity_id, 'teachers', $rooster_version, $week_id);
-		?><pre><? //print_r($data); ?></pre><?
 		if ($entity_multiple) $type = 'docenten '.$entity_name;
 		else $type = 'docent '.$entity_name;
 	}
 	break;
 case 'VAK':
 	$type = 'vak '.$entity_name;
-	$data = master_query($entity_id, 'subjects', $rooster_ids);
+	$data = master_query($entity_id, 'subjects', $rooster_version, $week_id);
+	break;
+case '*':
+	$type = '*';
+	$data = master_query(NULL, '', $rooster_version, $week_id);
 	break;
 default:
 	fatal('onmogelijk type');
 }
 
-db_dump_result($data);
+//db_dump_result($data);
 
-$data = db_build_assoc($data);
-exit;
+$data = db_build_assoc_rekey($data);
+//exit;
 
 cont:
 
@@ -328,6 +335,26 @@ function add_lv(&$info, $lesgroepen, $vak) {
         }
 }
 
+function print_diff($row) {
+        if ($row['f_d'] != $row['s_d'] || $row['f_u'] != $row['s_u']) {
+		//if ($row['f_d'] != $row['s_d'] /*&& $_GET['dy'] != '*'*/) $output[] = make_link($_GET['q'], print_dag($row['s_d']), $row['DAG2]).$row[UUR2];
+                /*else*/ $output[] = isodayname($row['s_d']).$row['s_u'];
+        }
+        if ($row['f_groups'] != $row['s_groups'] && $row['s_groups'] != '') $output[] = make_link($row['s_groups']); //, NULL, $row['s_d']);
+        if ($row['f_subjects'] != $row['s_subjects'] && $row['s_subjects'] != '') {
+                if ($row['s_subjects'] != '' && !vakmatch($row['s_subjects'], $row['s_groups'])) $output[] = htmlenc($row['s_subjects']);
+        }
+        if ($row['f_teachers'] != $row['s_teachers']) {
+                if ($row['s_teachers'] != '') $output[] = make_link($row['s_teachers']);//, NULL, $row[DAG2]);
+                else $output[] = '<span class="unknown">DOC?</span>';
+        }
+        if ($row['f_locations'] != $row['s_locations']) {
+                if ($row['s_locations'] != '') $output[] = make_link($row['s_locations']); //, NULL, $row[DAG2]);
+                else $output[] = '<span class="unknown">LOK?</span>';
+        }
+        return implode('/', $output);
+}
+
 html_start($project, <<<EOS
 $(function(){
 	// focus search box
@@ -340,7 +367,7 @@ EOS
 <p><div class="noprint" style="float: left">
 <form id="search" method="GET" name="search" accept-charset="UTF-8">
 <input type="submit" value="Zoek:">
-<input id="q" placeholder="llnr, afkorting, lokaal, /vak, groep of categorie" size="40" name="q"><? if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
+<input id="q" placeholder="llnr, afk, lok, /vak, groep, categorie of *" size="40" name="q"><? if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
 <input type="hidden" name="bw" value="<?=$bw?>">
 <?php if ($default_week == $safe_week) { ?>
 <input type="hidden" name="wk" value="">
@@ -393,62 +420,6 @@ EOS
 		else echo('Weekrooster');
 		?> van <? echo($type.'.');
 	} 
-	$totable = array();
-	if (isset($data)) foreach ($data as $a) {
-		$uur = $a['f_u'];
-		$day_number = $a['f_d'];
-		$sort = $uur.$day_number;
-		$dag = isodayname($day_number);
-		$valid = $a['f_v'];
-		$cancelled = $a['f_c'];
-		$modified = $a['f_m'];
-		$moved = $a['f_o'];
-		$new = $a['f_n'];
-		if ($bw == 'b' && (!($modified||$moved||$new)/*!$valid*/ || $cancelled)) {
-		//if ($bw = 'b' && (($valid && !$new) || !($valid||$new)/*!$valid*/ || $cancelled)) {
-			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
-			$totable[$sort][] = array(
-				'dag' => $dag,
-				'uur' => $uur,
-				'groups' => $a['f_groups'],
-				'subjects' => $a['f_subjects'],
-				'teachers' => $a['f_teachers'],
-				'locations' => $a['f_locations'],
-				'extra' => '',
-				'comment' => '',
-				'appointmentInstanceId' => $a['f_zid']
-			);
-		} else if ($bw == 'w') {
-			if (!array_key_exists($sort, $totable)) $totable[$sort] = array();
-			$extra = '';
-			$comment = '';
-			if ($cancelled) {
-				$extra = ' uitval';
-				$comment = '(uitval)';
-			} else if (!$valid) {
-				$extra = ' verplaatstnaar';
-				$comment = '(naar ...)';
-			} else if ($new) {
-				$extra = ' extra';
-				$comment = '(extra)';
-			} else if ($moved||$modified) {
-				$extra = ' verplaatstvan';
-				$comment = '(van ...)';
-			}
-			$totable[$sort][] = array(
-				'dag' => $dag,
-				'uur' => $uur,
-				'groups' => $a['f_groups'],
-				'subjects' => $a['f_subjects'],
-				'teachers' => $a['f_teachers'],
-				'locations' => $a['f_locations'],
-				'extra' => $extra,
-				'comment' => $comment,
-				'appointmentInstanceId' => $a['f_zid']
-			);
-		}
-	}
-	ksort($totable);
 ?>
 <p><table id="rooster"><tr><th></th>
 <th>ma <? echo date("j-n", $thismonday)          ?></th>
@@ -457,25 +428,90 @@ EOS
 <th>do <? echo date("j-n", $thismonday + 259200) ?></th>
 <th>vr <? echo date("j-n", $thismonday + 345600) ?></th>
 </tr>
-<? for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
+<? 
+	$les = next($data);
+	for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
 <tr class="spacer"><td><?=$i?></td>
-<? for ($j = 1; $j <= 5; $j++) { ?>
+<? 	for ($j = 1; $j <= 5; $j++) { ?>
 <td><?
-$key = $i.$j;
-if (!array_key_exists($key, $totable)) continue;
-foreach($totable[$key] as $les) {
-	$info = array();
-	$extra = $les['extra']; 
-	$comment = $les['comment'];
-	add_lv($info, $les['groups'], $les['subjects']);
-	add($info, $les['teachers']);
-	add($info, $les['locations']);
-	echo('<div class="les'.$extra.'">');
-	if (count($info)) echo('<table title="'.$les['appointmentInstanceId'].'"><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
-	if ($comment) echo('<div class="comment">'.$comment.'</div>');
-	echo('<div class="clear"></div></div>');
-	//print_r($les);
-}
+		while ($les && $les['f_d'] == $j && $les['f_u'] == $i) {
+			/* here we decide if and how the lesson is displayed */
+			if ($les['f_s'] == 'cancelled') {
+				// deze les is uitgevallen
+				$extra = ' uitval';
+				$comment = '(uitval)';
+			} else if ($les['f_s'] == 'new') {
+				// deze les is extra
+				$extra = ' extra';
+				$comment = '(extra)';
+			} else if ($les['f_v'] == 0) { // les is in weekrooster vervangen
+				// als:
+				// - de vervangende les zichtbaar is
+				// - op hetzelfde uur staat als de vervangende les
+				// ---> toon deze invalid les dan niet
+				if (isset($data[$les['s_id']]) &&
+						$les['f_d'] == $les['s_d'] &&
+						$les['f_u'] == $les['s_u']) {
+					$les = next($data);
+					continue;
+				}
+				// in andere gevallen: toon de les als verplaatstnaar
+				$extra = ' verplaatstnaar';
+				$comment = '(naar '.print_diff($les).')';
+			} else if ($les['f_v'] == 1 && $les['s_id']) {
+				// deze les is het de nieuwe les die bij een verplaatste
+				// les hoort, als:
+				// - als de oorspronkelijke les ook zichtbaar is
+				//   (als in: in dit rooster hoort, hij is al wel verborgen)
+				// - op hetzelfde uur staat als de oorspronkelijke les
+				// ----> toon deze les dan in geel
+				if (isset($data[$les['s_id']]) &&
+						$les['f_d'] == $les['s_d'] &&
+						$les['f_u'] == $les['s_u']) {
+					$extra = ' gewijzigd';
+					$comment = '(was '.print_diff($les).')';
+				} else {
+					$extra = ' verplaatstvan';
+					$comment = '(van '.print_diff($les).')';
+				}
+			} else {
+				// als de les nu nog niet aan de orde is geweest,
+				// dan is het een normal les!
+				$extra = '';
+				$comment = '';
+			}
+			$info = array();
+			add_lv($info, $les['f_groups'], $les['f_subjects']);
+			add($info, $les['f_teachers']);
+			add($info, $les['f_locations']); ?>
+<div class="les<?=$extra?>">
+<?			if (count($info)) { ?>
+<table title="<?=$les['zid']?>">
+<tr><td><?=implode("</td>\n<td>/</td>\n<td>", $info)?></td></tr>
+</table>
+<?		 	}
+			if ($comment) { ?>
+<div class="comment"><?=$comment?></div>
+<?			} ?>
+<div class="clear"></div></div>
+<?			$les = next($data);
+		}
+/*
+	$key = $i.$j;
+	if (!array_key_exists($key, $totable)) continue;
+	foreach($totable[$key] as $les) {
+		$info = array();
+		$extra = $les['extra']; 
+		$comment = $les['comment'];
+		add_lv($info, $les['groups'], $les['subjects']);
+		add($info, $les['teachers']);
+		add($info, $les['locations']);
+		echo('<div class="les'.$extra.'">');
+		if (count($info)) echo('<table title="'.$les['appointmentInstanceId'].'"><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
+		if ($comment) echo('<div class="comment">'.$comment.'</div>');
+		echo('<div class="clear"></div></div>');
+		//print_r($les);
+	}*/
 ?></td>
 <?php } ?>
 </tr>

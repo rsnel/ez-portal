@@ -490,17 +490,9 @@ EOQ
 	, $entity_ids);
 }
 
-/*
-SELECT *
-FROM entities
-JOIN entities2egrps USING (entity_id)
-JOIN appointments USING
-WHERE entity_id IN ( $entity_ids )
- */
-
 function generate_pairs($week_id, $rooster_version) {
 	$list = db_all_assoc(<<<EOQ
-SELECT log_id id, appointment_instance_zid zid, appointment_valid valid
+SELECT log_id id, appointment_id, appointment_instance_zid zid, appointment_valid valid
 FROM log
 LEFT JOIN (
         SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
@@ -508,12 +500,12 @@ LEFT JOIN (
         WHERE rooster_version <= ?
 ) AS next_log USING ( log_id, week_id )
 WHERE appointment_id IS NOT NULL AND obsolete IS NULL AND rooster_version <= ? AND week_id = ?
-ORDER BY appointment_instance_zid, appointment_id
+ORDER BY appointment_instance_zid, log_id
 EOQ
                 , $rooster_version, $rooster_version, $week_id);
 
         $pairs = db_all_assoc_rekey(<<<EOQ
-SELECT log_id, log1_id, pair_id
+SELECT log_id, appointment_id, pair_id
 FROM pairs
 LEFT JOIN (
         SELECT week_id, prev_pair_id pair_id, pair_id obsolete
@@ -533,12 +525,15 @@ EOQ
                         echo("match {$a['id']} <-> {$b['id']} ({$a['valid']}{$b['valid']})\n");
                         if (!isset($pairs[$b['id']])) {
                                 unset($pairs[$b['id']]);
-                                db_exec('INSERT INTO pairs ( week_id, rooster_version, log_id, log1_id ) VALUES ( ?, ?, ?, ? )', $week_id, $rooster_version, $b['id'], $a['id']);
+                                unset($pairs[$a['id']]);
+                                db_exec('INSERT INTO pairs ( week_id, rooster_version, log_id, paired_log_id, appointment_id ) VALUES ( ?, ?, ?, ?, ? )', $week_id, $rooster_version, $b['id'], $a['id'], $a['appointment_id']);
+                                db_exec('INSERT INTO pairs ( week_id, rooster_version, log_id, paired_log_id, appointment_id ) VALUES ( ?, ?, ?, ?, ? )', $week_id, $rooster_version, $a['id'], $b['id'], $b['appointment_id']);
                         } else if ($pairs[$b['id']]['appointment1_id'] == $a['id']) {
                                 // ok, already available
                         } else {
 				// soft-overwrite old pair
-                                db_exec('INSERT INTO pairs ( prev_pair_id, week_id, rooster_version, log_id, log1_id ) VALUES ( ?, ?, ?, ?, ? )', $pairs[$b['id']]['pair_id'], $week_id, $rooster_version, $b['id'], $a['id']);
+                                db_exec('INSERT INTO pairs ( prev_pair_id, week_id, rooster_version, log_id, paired_log_id, appointment_id ) VALUES ( ?, ?, ?, ?, ?, ? )', $pairs[$b['id']]['pair_id'], $week_id, $rooster_version, $b['id'], $a['id'], $a['appointment_id']);
+                                db_exec('INSERT INTO pairs ( prev_pair_id, week_id, rooster_version, log_id, paired_log_id, appointment_id ) VALUES ( ?, ?, ?, ?, ?, ? )', $pairs[$a['id']]['pair_id'], $week_id, $rooster_version, $a['id'], $b['id'], $b['appointment_id']);
                         }
                 }
                 $b = $a;
@@ -546,15 +541,70 @@ EOQ
 
 }
 
+function lock_release($type) {
+	// we can only release a lock when it is ours, so we check by 
+	// including our PID
+	$PID = getmypid();
+	
+	$affected_rows = db_exec('DELETE FROM locking WHERE locking_id = ? AND locking_pid = ?',
+		$type, $PID);
+
+	if (!$affected_rows) fatal('tried to delete a non-existing lock or a lock that was not ours');
+}
+
+function lock_acquire($type, $string) {
+	$PID = getmypid();
+	do {
+		$lock = db_single_row(<<<EOQ
+SELECT UNIX_TIMESTAMP(locking_last_timestamp) timestamp FROM locking WHERE locking_id = ?
+EOQ
+			, $type);
+		if ($lock === NULL) {
+			$affected_rows = db_exec(<<<EOQ
+INSERT IGNORE INTO locking ( locking_id, locking_pid, locking_status )
+VALUES ( ?, ?, ? )
+EOQ
+				, $type, $PID, $string);
+
+			if ($affected_rows) return 1; // success
+
+			// we've lost the race, retry
+		} else {
+			// there already is a lock... let's look how old it is
+			$age = time() - $lock['timestamp'];
+			if ($oud < 120) return 0; // lock is not old enough
+			
+			// lock is too old to be active, remove it
+			// and try to take it
+			db_exec('DELETE FROM locking WHERE locking_id = ?', $type);
+		}
+	} while (1);
+}
+
+function lock_renew($type, $string) {
+	$PID = getmypid();
+	// we can only renew a lock if it exists and if it's ours, so we include
+	// our PID and check if something happened (affected rows)
+	$affected_rows = db_exec('UPDATE locking SET locking_status = ?, locking_last_timestamp = NOW(6) WHERE locking_id = ? AND locking_pid = ?', $string, $type, $PID);
+	if (!$affected_rows) fatal('tried to renew a lock that was not ours...');
+}
+
 function master_query($entity_ids, $kind, $rooster_version, $week_id) {
+	if ($entity_ids) {
+		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id\n";
+		$where = " AND entity_id IN ( $entity_ids )";
+	} else {
+		$join = '';
+		$where = '';
+	}
 	return db_query(<<<EOQ
-SELECT f_l.log_id f_id, f_l.appointment_instance_zid f_zid, f_a.appointment_day f_d,
+SELECT f_l.log_id f_id, f_l.appointment_instance_zid zid, f_a.appointment_day f_d,
 	f_a.appointment_timeSlot f_u, f_l.appointment_valid f_v, f_l.appointment_state f_s,
-	s_l.log_id s_id, s_a.appointment_day s_d, s_a.appointment_timeSlot s_u,
-	f_a.groups f_groups, f_a.subjects f_subjects, f_a.teachers f_teachers,
-	f_a.locations f_locations,
-	s_a.groups s_groups, s_a.subjects s_subjects, s_a.teachers s_teachers,
-	s_a.locations s_locations
+	f_a.groups f_groups, f_a.subjects f_subjects,
+	f_a.teachers f_teachers, f_a.locations f_locations,
+	pairs.paired_log_id s_id, s_a.appointment_day s_d, s_a.appointment_timeSlot s_u,
+	s_a.groups s_groups, s_a.subjects s_subjects,
+	s_a.teachers s_teachers, s_a.locations s_locations
 FROM log AS f_l
 LEFT JOIN (
 	SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
@@ -562,17 +612,8 @@ LEFT JOIN (
 	WHERE rooster_version <= ?
 ) AS next_log USING (log_id, week_id)
 JOIN appointments AS f_a USING (appointment_id)
-JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id
-LEFT JOIN (
-	SELECT week_id, log_id AS log_id, log1_id AS s_id FROM pairs
-	LEFT JOIN (
-		SELECT week_id, prev_pair_id AS pair_id, pair_id obsolete
-		FROM pairs
-		WHERE rooster_version <= ?
-	) AS next_pairs USING (pair_id, week_id)
-	WHERE rooster_version <= ? AND obsolete IS NULL
-	UNION
-	SELECT week_id, log1_id, log_id FROM pairs
+{$join}LEFT JOIN (
+	SELECT week_id, log_id, paired_log_id, appointment_id FROM pairs
 	LEFT JOIN (
 		SELECT week_id, prev_pair_id AS pair_id, pair_id obsolete
 		FROM pairs
@@ -580,84 +621,12 @@ LEFT JOIN (
 	) AS next_pairs USING (pair_id, week_id)
 	WHERE rooster_version <= ? AND obsolete IS NULL
 ) AS pairs USING (log_id, week_id)
-LEFT JOIN log AS s_l ON s_id = s_l.log_id
-LEFT JOIN appointments AS s_a ON s_a.appointment_id = s_l.appointment_id
-WHERE obsolete IS NULL AND f_l.week_id = ? AND f_l.rooster_version <= ? AND entity_id IN ( $entity_ids )
+LEFT JOIN appointments AS s_a ON s_a.appointment_id = pairs.appointment_id
+WHERE obsolete IS NULL AND f_l.week_id = ? AND f_l.rooster_version <= ?$where
+AND f_a.appointment_timeSlot > 0
 ORDER BY f_u, f_d, f_v, CASE f_s WHEN 'cancelled' THEN 0 WHEN 'normal' THEN 1 WHEN 'new' THEN 2 END
 EOQ
-	, $rooster_version, $rooster_version, $rooster_version, $rooster_version, $rooster_version, $week_id, $rooster_version);
-}
-
-function master_query_old($entity_ids, $kind, $rooster_ids) {
-	/* kind must be 'locations', 'groups', 'subjects', 'teachers' or 'students' */
-	$kinds = array('locations', 'groups', 'subjects', 'teachers');
-	if ($kind != 'students') {
-		$idx = array_search($kind, $kinds);
-		if ($idx === false) fatal("illegal value of kind");
-		unset($kinds[$idx]);
-		$xtraselect = ', f_a.'.$kind.' f_'.$kind;
-	} else $xtraselect = '';
-	$join = '';
-	$select = '';
-	$select2 = '';
-	$select3 = '';
-	foreach ($kinds as $also) {
-		$join .= <<<EOJ
-JOIN (
-	SELECT egrp_id f_{$also}_egrp_id, egrp $also FROM egrps
-) AS $also USING (f_{$also}_egrp_id)
-
-EOJ;
-		$select .= ", $also.$also f_$also";
-		$select2 .= ", {$also}_egrp_id f_{$also}_egrp_id";
-		$select3 .= ", {$also}_egrp_id s_{$also}_egrp_id";
-	}
-	return db_query(<<<EOQ
-SELECT f_id, f_zid, f_d, f_u, f_v, f_c, f_m, f_o, f_n, f_$kind$select
--- , s_id, s_zid
--- , s_d, s_u, s_v, s_c, s_m, s_o, s_n
-FROM (
-	SELECT DISTINCT appointment_id f_id, appointment_instance_zid f_zid, WEEKDAY(appointment_start) + 1 f_d,
-		appointment_startTimeSlot f_u, appointment_valid f_v,
-		appointment_cancelled f_c, appointment_modified f_m,
-		appointment_moved f_o, appointment_new f_n, egrp f_$kind$select2
-        FROM appointments
-        LEFT JOIN (
-                SELECT prev_appointment_id appointment_id, appointment_id obsolete
-                FROM appointments
-                WHERE rooster_id IN ( $rooster_ids )
-        ) next_appointments USING ( appointment_id )
-        JOIN entities2egrps ON entities2egrps.egrp_id = appointments.{$kind}_egrp_id
-        JOIN egrps AS $kind USING (egrp_id)
-        WHERE appointments.rooster_id IN ( $rooster_ids )
-	AND appointment_startTimeSlot = appointment_endTimeSlot
-        AND obsolete IS NULL AND appointment_hidden = 0
-        AND entity_id IN ( $entity_ids )
-) AS f_a
-$join
--- LEFT JOIN (
--- 	SELECT appointment0_id AS f_id, appointment1_id AS s_id FROM pairs
--- 	LEFT JOIN (
--- 		SELECT prev_pair_id AS pair_id, pair_id obsolete
--- 		FROM pairs
--- 		WHERE rooster_id IN ( $rooster_ids )
--- 	) AS next_pairs USING (pair_id)
--- 	WHERE rooster_id IN ( $rooster_ids ) AND obsolete IS NULL
--- 	UNION
--- 	SELECT appointment1_id, appointment0_id FROM pairs
--- 	LEFT JOIN (
--- 		SELECT prev_pair_id AS pair_id, pair_id obsolete
--- 		FROM pairs
--- 		WHERE rooster_id IN ( $rooster_ids )
--- 	) AS next_pairs USING (pair_id)
--- 	WHERE rooster_id IN ( $rooster_ids ) AND obsolete IS NULL
--- ) AS pairs USING (f_id)
--- LEFT JOIN (
--- 	SELECT appointment_id AS s_id, appointment_instance_zid AS s_zid,
---  FROM appointments
--- ) AS s_a USING (s_id)
-EOQ
-	);
+	, $rooster_version, $rooster_version, $rooster_version, $week_id, $rooster_version);
 }
 
 // warn when there are doubly named things
