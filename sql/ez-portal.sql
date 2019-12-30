@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 30, 2019 at 11:06 AM
+-- Generation Time: Dec 30, 2019 at 06:34 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -52,7 +52,11 @@ CREATE TABLE `appointments` (
   `subjects_egrp_id` int(11) NOT NULL,
   `teachers_egrp_id` int(11) NOT NULL,
   `locations_egrp_id` int(11) NOT NULL,
-  `schedulerRemark_text_id` int(11) NOT NULL
+  `schedulerRemark_text_id` int(11) NOT NULL,
+  `groups` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `subjects` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `teachers` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `locations` text COLLATE utf8mb4_unicode_ci NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -233,7 +237,6 @@ CREATE TABLE `weeks` (
   `wo` tinyint(1) NOT NULL DEFAULT 1,
   `do` tinyint(1) NOT NULL DEFAULT 1,
   `vr` tinyint(1) NOT NULL DEFAULT 1,
-  `week_lock` int(11) NOT NULL DEFAULT 0,
   `week_last_sync` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
