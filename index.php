@@ -35,7 +35,7 @@ SELECT week_id, year, week, sisy_id, sisy_school, sisy_project,
 	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp
 FROM weeks
 JOIN (
-	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1 AND rooster_last_modified != 0
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
 ) AS valid USING (week_id)
 JOIN sisys USING (sisy_id)
 WHERE sisy_archived != 1
@@ -48,7 +48,7 @@ if (!$weeks) fatal("rooster nog niet ingelezen");
 $default_week_id = db_single_field(<<<EOQ
 SELECT week_id FROM weeks
 JOIN (
-	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1 AND rooster_last_modified != 0
+	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
 ) AS valid USING (week_id)
 WHERE year > ? OR ( year = ? AND week >= ? )
 ORDER BY year, week
@@ -78,7 +78,7 @@ if (!$week_id) {
 
 //echo("week_id=$week_id\n");
 $rooster_info = db_single_row(<<<EOQ
-SELECT rooster_ids, version,
+SELECT version,
 	DATE_FORMAT(last_modified, CONCAT('wk%v',
 		CASE WEEKDAY(last_modified) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo'
 		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
@@ -88,8 +88,7 @@ SELECT rooster_ids, version,
 		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
 	'%H:%i')) last_synced
 FROM (
-	SELECT GROUP_CONCAT(rooster_id) rooster_ids,
-		COUNT(rooster_id) version,
+	SELECT COUNT(rooster_id) version,
 		MAX(rooster_last_modified) last_modified,
 		MAX(week_last_sync) last_synced
 	FROM roosters
@@ -101,7 +100,7 @@ EOQ
 , $week_id);
 
 if (!$rooster_info) fatal("no rooster info?!?!?!");
-$rooster_ids = $rooster_info['rooster_ids'];
+$rooster_version = $rooster_info['version'];
 
 $thismonday = $weeks[$week_id]['monday_unix_timestamp'];
 $sisy_id = $weeks[$week_id]['sisy_id'];
@@ -262,7 +261,7 @@ case 'PERSOON':
 		else $type = 'leerling '.$entity_name;
 	}
 	if ($isWhat['isEmployee']) {
-		$data = master_query($entity_id, 'teachers', $rooster_ids);
+		$data = master_query($entity_id, 'teachers', $rooster_version, $week_id);
 		?><pre><? //print_r($data); ?></pre><?
 		if ($entity_multiple) $type = 'docenten '.$entity_name;
 		else $type = 'docent '.$entity_name;
@@ -276,9 +275,10 @@ default:
 	fatal('onmogelijk type');
 }
 
-//db_dump_result($data);
+db_dump_result($data);
 
 $data = db_build_assoc($data);
+exit;
 
 cont:
 
@@ -496,7 +496,7 @@ foreach($totable[$key] as $les) {
 
 <p>
 <span id="updateinfo">
-Het rooster in deze week r<?=$rooster_info['version']?>,
+Het rooster in deze week r<?=$rooster_version?>,
 laatste wijziging <?=$rooster_info['last_modified']?>,
 laatste synchronisatie <?=$rooster_info['last_synced']?>.
 Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren

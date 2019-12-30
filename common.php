@@ -490,7 +490,105 @@ EOQ
 	, $entity_ids);
 }
 
-function master_query($entity_ids, $kind, $rooster_ids) {
+/*
+SELECT *
+FROM entities
+JOIN entities2egrps USING (entity_id)
+JOIN appointments USING
+WHERE entity_id IN ( $entity_ids )
+ */
+
+function generate_pairs($week_id, $rooster_version) {
+	$list = db_all_assoc(<<<EOQ
+SELECT log_id id, appointment_instance_zid zid, appointment_valid valid
+FROM log
+LEFT JOIN (
+        SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
+        FROM log
+        WHERE rooster_version <= ?
+) AS next_log USING ( log_id, week_id )
+WHERE appointment_id IS NOT NULL AND obsolete IS NULL AND rooster_version <= ? AND week_id = ?
+ORDER BY appointment_instance_zid, appointment_id
+EOQ
+                , $rooster_version, $rooster_version, $week_id);
+
+        $pairs = db_all_assoc_rekey(<<<EOQ
+SELECT log_id, log1_id, pair_id
+FROM pairs
+LEFT JOIN (
+        SELECT week_id, prev_pair_id pair_id, pair_id obsolete
+        FROM pairs
+        WHERE rooster_version <= ?
+) AS next_pairs USING (pair_id, week_id)
+WHERE obsolete IS NULL AND rooster_version <= ? AND week_id = ?
+EOQ
+                , $rooster_version, $rooster_version, $week_id);
+
+	if (!count($list)) return;
+
+	$b = array_shift($list);
+
+	foreach ($list as $a) {
+                if ($a['zid'] == $b['zid']) {
+                        echo("match {$a['id']} <-> {$b['id']} ({$a['valid']}{$b['valid']})\n");
+                        if (!isset($pairs[$b['id']])) {
+                                unset($pairs[$b['id']]);
+                                db_exec('INSERT INTO pairs ( week_id, rooster_version, log_id, log1_id ) VALUES ( ?, ?, ?, ? )', $week_id, $rooster_version, $b['id'], $a['id']);
+                        } else if ($pairs[$b['id']]['appointment1_id'] == $a['id']) {
+                                // ok, already available
+                        } else {
+				// soft-overwrite old pair
+                                db_exec('INSERT INTO pairs ( prev_pair_id, week_id, rooster_version, log_id, log1_id ) VALUES ( ?, ?, ?, ?, ? )', $pairs[$b['id']]['pair_id'], $week_id, $rooster_version, $b['id'], $a['id']);
+                        }
+                }
+                $b = $a;
+	}
+
+}
+
+function master_query($entity_ids, $kind, $rooster_version, $week_id) {
+	return db_query(<<<EOQ
+SELECT f_l.log_id f_id, f_l.appointment_instance_zid f_zid, f_a.appointment_day f_d,
+	f_a.appointment_timeSlot f_u, f_l.appointment_valid f_v, f_l.appointment_state f_s,
+	s_l.log_id s_id, s_a.appointment_day s_d, s_a.appointment_timeSlot s_u,
+	f_a.groups f_groups, f_a.subjects f_subjects, f_a.teachers f_teachers,
+	f_a.locations f_locations,
+	s_a.groups s_groups, s_a.subjects s_subjects, s_a.teachers s_teachers,
+	s_a.locations s_locations
+FROM log AS f_l
+LEFT JOIN (
+	SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
+	FROM log
+	WHERE rooster_version <= ?
+) AS next_log USING (log_id, week_id)
+JOIN appointments AS f_a USING (appointment_id)
+JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id
+LEFT JOIN (
+	SELECT week_id, log_id AS log_id, log1_id AS s_id FROM pairs
+	LEFT JOIN (
+		SELECT week_id, prev_pair_id AS pair_id, pair_id obsolete
+		FROM pairs
+		WHERE rooster_version <= ?
+	) AS next_pairs USING (pair_id, week_id)
+	WHERE rooster_version <= ? AND obsolete IS NULL
+	UNION
+	SELECT week_id, log1_id, log_id FROM pairs
+	LEFT JOIN (
+		SELECT week_id, prev_pair_id AS pair_id, pair_id obsolete
+		FROM pairs
+		WHERE rooster_version <= ?
+	) AS next_pairs USING (pair_id, week_id)
+	WHERE rooster_version <= ? AND obsolete IS NULL
+) AS pairs USING (log_id, week_id)
+LEFT JOIN log AS s_l ON s_id = s_l.log_id
+LEFT JOIN appointments AS s_a ON s_a.appointment_id = s_l.appointment_id
+WHERE obsolete IS NULL AND f_l.week_id = ? AND f_l.rooster_version <= ? AND entity_id IN ( $entity_ids )
+ORDER BY f_u, f_d, f_v, CASE f_s WHEN 'cancelled' THEN 0 WHEN 'normal' THEN 1 WHEN 'new' THEN 2 END
+EOQ
+	, $rooster_version, $rooster_version, $rooster_version, $rooster_version, $rooster_version, $week_id, $rooster_version);
+}
+
+function master_query_old($entity_ids, $kind, $rooster_ids) {
 	/* kind must be 'locations', 'groups', 'subjects', 'teachers' or 'students' */
 	$kinds = array('locations', 'groups', 'subjects', 'teachers');
 	if ($kind != 'students') {

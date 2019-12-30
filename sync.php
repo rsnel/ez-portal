@@ -5,7 +5,7 @@ $_SERVER['EZ_PORTAL_INSTITUTION'] = 'ovc';
 require_once('common.php');
 require_once('zportal.php');
 
-//set_employee_token();
+set_employee_token();
 
 /* velden die we opvragen, dit zijn er te veel, maar deze zitten
  * op dit moment (bij het testen) in de cache, dus deze kunnen we opvragen
