@@ -13,6 +13,9 @@ $config_defaults = array(
 
 // fatal() is for system errors that should not happen during usage
 function fatal($string) {
+	static $fatal_count = 0;
+	if ($fatal_count > 0) exit; // bail out on double error
+	$fatal_count++;
         if (php_sapi_name() != 'cli') header('Content-type: text/plain');
         echo("fatal:$string\n");
         exit;
