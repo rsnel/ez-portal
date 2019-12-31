@@ -39,7 +39,7 @@ $expires = dereference($tokeninfo, 'expires');
 set_access_token_cookie($expires, $access_token);
 
 /* add info to database */
-$entity_id = db_get_entity_id(capitalize(htmlenc($entity_name), 'PERSON'), 'PERSOON');
+$entity_id = db_get_entity_id(capitalize(htmlenc($entity_name), 'PERSOON'), 'PERSOON');
 
 db_exec(<<<EOQ
 INSERT INTO access ( access_token, entity_id, access_expires ) VALUES ( ?, ?, FROM_UNIXTIME(?) )
@@ -54,6 +54,6 @@ if (dereference($userinfo, 'code') != $entity_name)
 /* add name and roles to users table */
 update_user($userinfo);
 
-header('Location: https://'.$_SERVER['HTTP_HOST'].'/');
+header('Location: https://'.$_SERVER['HTTP_HOST'].dirname($_SERVER['PHP_SELF']).'/');
 
 ?>
