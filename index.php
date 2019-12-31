@@ -243,6 +243,7 @@ case 'STAMKLAS':
 	$data = master_query($lln_entity_ids, 'students', $rooster_version, $week_id);
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
+	$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet goed weergegven</span>';
 	break;
 case 'CATEGORIE':
 	$group_entity_ids = db_single_field('SELECT GROUP_CONCAT(entity_id) FROM entity_zids WHERE sisy_id = ? AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )', $sisy_id, $bos_id);
@@ -260,9 +261,10 @@ case 'PERSOON':
 	if ($isWhat['isFamilyMember']) fatal("$entity_name is ouder, dat kan het systeem nog niet aan...");
 	if ($isWhat['isEmployee'] && $isWhat['isStudent']) fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
 	if ($isWhat['isStudent']) {
-		$data = master_query($entity_id, 'students', $rooster_ids);
+		$data = master_query($entity_id, 'students', $rooster_version, $week_id);
 		if ($entity_multiple) $type = 'leerlingen '.$entity_name;
 		else $type = 'leerling '.$entity_name;
+		$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet goed weergegven</span>';
 	}
 	if ($isWhat['isEmployee']) {
 		$data = master_query($entity_id, 'teachers', $rooster_version, $week_id);
@@ -271,7 +273,8 @@ case 'PERSOON':
 	}
 	break;
 case 'VAK':
-	$type = 'vak '.$entity_name;
+	if ($entity_multiple) $type = 'vakken '.$entity_name;
+	else $type = 'vak '.$entity_name;
 	$data = master_query($entity_id, 'subjects', $rooster_version, $week_id);
 	break;
 case '*':
@@ -304,7 +307,7 @@ function enccommabr($string) {
 }
 
 function vakmatch($vak, $match) {
-	return preg_match("/\.{$vak}[0-9]\$/", $match);
+	return preg_match("/\.{$vak}[0-9],/", $match.',');
 }
 
 
