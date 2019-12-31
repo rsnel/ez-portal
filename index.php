@@ -6,7 +6,7 @@ require_once('html.php');
 $access_info = get_access_info();
 
 if (!$access_info) {
-	html_start(); ?>
+	html_start($_SERVER['EZ_PORTAL_INSTITUTION']); ?>
 	Als je toegang hebt tot <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl, dan kun je daar inloggen een koppelcode van 12 cijfers aanmaken. Deze code kun je dan hieronder invullen om het rooster te kunnen raadplegen.
 
 <p>
@@ -246,7 +246,7 @@ case 'STAMKLAS':
 	break;
 case 'CATEGORIE':
 	$group_entity_ids = db_single_field('SELECT GROUP_CONCAT(entity_id) FROM entity_zids WHERE sisy_id = ? AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )', $sisy_id, $bos_id);
-	$data = master_query($group_entity_ids, 'groups', $rooster_ids);
+	$data = master_query($group_entity_ids, 'groups', $rooster_version, $week_id);
 	if ($entity_multiple) $type = 'categorie&euml;n '.$entity_name;
 	else $type = 'categorie '.$entity_name;
 	break;
@@ -355,7 +355,7 @@ function print_diff($row) {
         return implode('/', $output);
 }
 
-html_start($project, <<<EOS
+html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 $(function(){
 	// focus search box
 	$('#q').focus();
@@ -367,7 +367,7 @@ EOS
 <p><div class="noprint" style="float: left">
 <form id="search" method="GET" name="search" accept-charset="UTF-8">
 <input type="submit" value="Zoek:">
-<input id="q" placeholder="llnr, afk, lok, /vak, groep, categorie of *" size="40" name="q"><?php if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
+<input id="q" placeholder="llnr, groep, /vak, afk, lok, categorie of *" size="40" name="q"><?php if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
 <input type="hidden" name="bw" value="<?=$bw?>">
 <?php if ($default_week == $safe_week) { ?>
 <input type="hidden" name="wk" value="">
