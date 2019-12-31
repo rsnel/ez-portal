@@ -4,7 +4,7 @@ $config_defaults = array(
 	'PORTAL' => '?',
 	'STRIP_CATEGORIE_OF_STAMKLAS' => 'true',
 	'DOCFILTER' => 'TRUE',
-	'MAX_LESUUR' => '9',
+	'MAX_LESUUR' => '1',
 	'NAMES_BUG' => 'none',
 	'TIMEZONE' => 'Europe/Amsterdam',
 	'CAPITALIZE' => 'none',
@@ -473,27 +473,6 @@ EOQ
 	, $version);
 }
 
-function lln_query($entity_ids, $rooster_ids) {
-	return db_single_field(<<<EOQ
-SELECT GROUP_CONCAT(DISTINCT entity_id) FROM (
-        SELECT DISTINCT students_egrp_id AS egrp_id
-        FROM appointments
-        LEFT JOIN (
-                SELECT prev_appointment_id appointment_id, appointment_id obsolete
-                FROM appointments
-                WHERE rooster_id IN ( $rooster_ids )
-        ) next_appointments USING ( appointment_id )
-        JOIN entities2egrps ON entities2egrps.egrp_id = appointments.groups_egrp_id
-        JOIN egrps AS groups USING (egrp_id)
-        WHERE appointments.rooster_id IN ( $rooster_ids )
-        AND obsolete IS NULL AND appointment_hidden = 0
-        AND entity_id IN ( ? )
-) AS tmp
-JOIN entities2egrps USING (egrp_id)
-EOQ
-	, $entity_ids);
-}
-
 function generate_pairs($week_id, $rooster_version) {
 	// delete all pairings that must be generated or that depend on those being generated
 	// do it in a specific order to satisfy the foreign key constraint on prev_pair_id
@@ -624,13 +603,18 @@ function show_normal($les, $bw) {
 }
 
 function master_query($entity_ids, $kind, $rooster_version, $week_id) {
-	if ($entity_ids) {
-		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id\n";
-		$where = " AND entity_id IN ( $entity_ids )";
-	} else {
+	if (!$entity_ids) {
 		$join = '';
 		$where = '';
-	}
+	} else if ($kind == 'students') {
+		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_l.students_egrp_id\n";
+		$where = " AND entity_id IN ( $entity_ids )";
+	} else if ($kind == 'groups' || $kind == 'subjects' ||
+			$kind == 'teachers' || $kind == 'locations') {
+		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id\n";
+		$where = " AND entity_id IN ( $entity_ids )";
+	} else fatal("impossible value of \$kind");
+
 	return db_query(<<<EOQ
 SELECT f_l.log_id f_id, f_a.appointment_id f_aid, f_l.appointment_instance_zid zid,
 	f_a.appointment_day f_d, f_a.appointment_timeSlot f_u, f_l.appointment_valid f_v,
@@ -661,6 +645,23 @@ AND f_a.appointment_timeSlot > 0
 ORDER BY f_u, f_d, f_v, CASE f_s WHEN 'cancelled' THEN 0 WHEN 'normal' THEN 1 WHEN 'new' THEN 2 END
 EOQ
 	, $rooster_version, $rooster_version, $rooster_version, $week_id, $rooster_version);
+}
+
+function lln_query($entity_ids, $rooster_version, $week_id) {
+	return db_single_field(<<<EOQ
+SELECT GROUP_CONCAT(DISTINCT log2students.entity_id)
+FROM log
+LEFT JOIN (
+	SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
+	FROM log
+	WHERE rooster_version <= ?
+) AS next_log USING (log_id, week_id)
+JOIN appointments USING (appointment_id)
+JOIN entities2egrps AS appointments2groups ON appointments2groups.egrp_id = appointments.groups_egrp_id
+JOIN entities2egrps AS log2students ON log2students.egrp_id = log.students_egrp_id
+WHERE appointments2groups.entity_id IN ( $entity_ids ) AND rooster_version <= ? AND week_id = ?
+EOQ
+	, $rooster_version, $rooster_version, $week_id);
 }
 
 // warn when there are doubly named things

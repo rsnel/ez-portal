@@ -11,7 +11,7 @@ if (!$access_info) {
 
 <p>
 <form action="req_access_token.php" method="POST" accept-charset="UTF-8">
-instelling: ovc
+instelling: <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>
 <p><label>code: <input autocomplete="off" type="text" placeholder="*** *** *** ***" name="code"></label>
 <p><input type="submit" value="Koppel en plaats toegangscookie">
 </form>	
@@ -239,8 +239,8 @@ if ($entity_multiple) {
 switch ($entity_type) {
 case 'LESGROEP':
 case 'STAMKLAS':
-	$lln_entity_ids = lln_query($entity_id, $rooster_ids);
-	$data = master_query($lln_entity_ids, 'students', $rooster_ids);
+	$lln_entity_ids = lln_query($entity_id, $rooster_version, $week_id);
+	$data = master_query($lln_entity_ids, 'students', $rooster_version, $week_id);
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
 	break;
@@ -518,13 +518,12 @@ EOS
 <?php }
 }
 ?>
-<p>
 <span id="updateinfo">
 Het rooster in deze week r<?=$rooster_version?>,
 laatste wijziging <?=$rooster_info['last_modified']?>,
 laatste synchronisatie <?=$rooster_info['last_synced']?>.
 Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren
-om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie van <?=
-$access_info['entity_name']?> verwijderen]</a>
+om toegang te krijgen tot het roosterbord.
+<a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>
 </span>
 <?php html_end(); ?>
