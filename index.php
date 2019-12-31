@@ -435,15 +435,15 @@ EOS
 <?php 		for ($j = 1; $j <= 5; $j++) { ?>
 <td><?php		while ($les && $les['f_d'] == $j && $les['f_u'] == $i) {
 				/* here we decide if and how the lesson is displayed */
-				if ($les['f_s'] == 'cancelled') {
+				if (show_cancelled($les, $bw)) {
 					// deze les is uitgevallen
 					$extra = ' uitval';
 					$comment = '(uitval)';
-				} else if ($les['f_s'] == 'new') {
+				} else if (show_new($les, $bw)) {
 					// deze les is extra
 					$extra = ' extra';
 					$comment = '(extra)';
-				} else if ($les['f_v'] == 0) { // les is in weekrooster vervangen
+				} else if (show_replaced($les, $bw)) {
 					// als:
 					// - de vervangende les zichtbaar is
 					// - op hetzelfde uur staat als de vervangende les
@@ -459,7 +459,7 @@ EOS
 					// in andere gevallen: toon de les als verplaatstnaar
 					$extra = ' verplaatstnaar';
 					$comment = '(naar '.print_diff($les).')';
-				} else if ($les['f_v'] == 1 && $les['s_id'] && $les['f_aid'] != $les['s_aid']) {
+				} else if (show_replacement($les, $bw)) {
 					// deze les is het de nieuwe les die bij een verplaatste
 					// les hoort, als:
 					// - als de oorspronkelijke les ook zichtbaar is
@@ -475,11 +475,15 @@ EOS
 						$extra = ' verplaatstvan';
 						$comment = '(van '.print_diff($les).')';
 					}
-				} else {
+				} else if (show_normal($les, $bw)) {
 					// als de les nu nog niet aan de orde is geweest,
 					// dan is het een normal les!
 					$extra = '';
 					$comment = '';
+				} else {
+					// do not show
+					$les = next($data);
+					continue;
 				}
 				$info = array();
 				add_lv($info, $les['f_groups'], $les['f_subjects']);

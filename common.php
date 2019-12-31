@@ -598,6 +598,31 @@ function lock_renew($type, $string) {
 	if (!$affected_rows) fatal('tried to renew a lock that was not ours...');
 }
 
+function show_cancelled($les, $bw) {
+	if ($bw == 'b') return false;
+	else if ($bw == 'w') return $les['f_s'] == 'cancelled';
+}
+
+function show_new($les, $bw) {
+	if ($bw == 'b') return false;
+	else if ($bw == 'w') return $les['f_s'] == 'new';
+}
+
+function show_replaced($les, $bw) {
+	if ($bw == 'b') return false;
+	else if ($bw == 'w') return $les['f_v'] == 0;
+}
+
+function show_replacement($les, $bw) {
+	if ($bw == 'b') return false;
+	else if ($bw == 'w') return $les['f_v'] == 1 && $les['s_id'] && $les['f_aid'] != $les['s_aid'];
+}
+
+function show_normal($les, $bw) {
+	if ($bw == 'w') return true;
+	else if ($bw == 'b') return ($les['f_s'] != 'new') && ( ( $les['f_s'] == 'cancelled' || $les['f_v'] == 0 ) || ( $les['f_v'] == 1 && !$les['s_id'] ) );
+}
+
 function master_query($entity_ids, $kind, $rooster_version, $week_id) {
 	if ($entity_ids) {
 		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id\n";
