@@ -5,7 +5,7 @@ function html_start($title = '', $script = '') {
 	if ($title != '') $title .= ' - ';
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="nl">
 <head>
 <meta charset="UTF-8">
 <link rel="stylesheet" href="css/style.css">
@@ -16,9 +16,9 @@ function html_start($title = '', $script = '') {
 <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
 <meta name="msapplication-TileColor" content="#da532c">
 <meta name="theme-color" content="#ffffff">
-<script type="text/javascript" src="js/jquery-3.4.1.min.js"></script>
+<script src="js/jquery-3.4.1.min.js"></script>
 <?php if ($script) { ?>
-<script type="text/javascript">
+<script>
 //<![CDATA[
 <?=$script?>
 //]]>
@@ -39,7 +39,7 @@ function html_end() {
 </div>
 <div id="footer">
 <div id="footerlogo">
-<img src="images/AGPLv3_Logo.svg">
+<img alt="AGPLv3 logo" src="images/AGPLv3_Logo.svg">
 </div>
 <div id="footertext">
 <a href="https://ez-portal.nl/">ez-portal</a><?=$version_copy?> Rik Snel &lt;rik@snel.it&gt;, Favicons (<a href="https://commons.wikimedia.org/wiki/File:Ernst_Zermelo_1900s.jpg">source</a>) are in the public domain.<br>
