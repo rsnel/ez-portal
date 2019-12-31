@@ -27,6 +27,7 @@ table#rooster > tbody > tr {
 }
 table#rooster > tbody >tr > td {
         /*width: 19%;*/
+	overflow: hidden;
         border: 1px solid black;
 }
 #rooster > tbody > tr > td:not(:first-child), #rooster > tbody > tr > th:not(:first-child) {

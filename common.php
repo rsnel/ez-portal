@@ -100,7 +100,8 @@ function checksetarray($base) {
 }
 
 function set_access_token_cookie($expires, $access_token = '') {
-	setcookie('access_token', $access_token, $expires, '/',
+	setcookie('access_token', $access_token, $expires,
+			dirname($_SERVER['PHP_SELF']),
 			$_SERVER['HTTP_HOST'], true, true);
 }
 
@@ -491,6 +492,11 @@ EOQ
 }
 
 function generate_pairs($week_id, $rooster_version) {
+	// delete all pairings that must be generated or that depend on those being generated
+	// do it in a specific order to satisfy the foreign key constraint on prev_pair_id
+	$do_delete = db_all_assoc('SELECT pair_id FROM pairs WHERE week_id = ? AND rooster_version >= ? ORDER BY pair_id DESC');
+	foreach ($do_delete as $pair_id) db_exec('DELETE FROM pairs WHERE pair_id = ?', $pair_id);
+
 	$list = db_all_assoc(<<<EOQ
 SELECT log_id id, appointment_id, appointment_instance_zid zid, appointment_valid valid
 FROM log

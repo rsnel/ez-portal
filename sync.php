@@ -1,7 +1,5 @@
 #!/usr/bin/php
 <?
-$_SERVER['EZ_PORTAL_INSTITUTION'] = 'ovc';
-
 require_once('common.php');
 require_once('zportal.php');
 
@@ -9,8 +7,6 @@ require_once('zportal.php');
 function shutdown_function() {
 	lock_release('appointments');
 }
-
-register_shutdown_function('shutdown_function');
 
 set_employee_token();
 
@@ -68,8 +64,13 @@ if (config('RESPECT_HOLIDAYS') == 'true') {
 $weeks = db_all_assoc_rekey("SELECT *, UNIX_TIMESTAMP(monday_timestamp) start FROM weeks WHERE sisy_id = ?$respect_holidays ORDER BY year, week", $sisy_id);
 //print_r($weeks);
 
+register_shutdown_function('shutdown_function');
 $count_weeks = 0;
-lock_acquire('appointments', 'updating appointments in '.count($weeks).' weken');
+
+while (!lock_acquire('appointments', 'updating appointments in '.count($weeks).' weken')) {
+	echo("lock busy, waiting...\n");
+	sleep(3);
+}
 
 foreach ($weeks as $week_id => $week) {
 	$count_weeks++;

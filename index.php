@@ -367,35 +367,35 @@ EOS
 <p><div class="noprint" style="float: left">
 <form id="search" method="GET" name="search" accept-charset="UTF-8">
 <input type="submit" value="Zoek:">
-<input id="q" placeholder="llnr, afk, lok, /vak, groep, categorie of *" size="40" name="q"><? if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
+<input id="q" placeholder="llnr, afk, lok, /vak, groep, categorie of *" size="40" name="q"><?php if ($_GET['q'] != '') { if ($entity_type === '') echo(' <span class="error">Zoekterm "'.htmlenc($_GET['q']).'" niet gevonden.</span>'); else echo(' of kijk in de '.make_link('', 'lijst').'.'); } ?>
 <input type="hidden" name="bw" value="<?=$bw?>">
 <?php if ($default_week == $safe_week) { ?>
 <input type="hidden" name="wk" value="">
-<? } else { ?>
+<?php } else { ?>
 <input type="hidden" name="wk" value="<?=$safe_week?>">
-<? } ?>
+<?php } ?>
 </form>
 </div>
 <div class="noprint" style="float:right">
 <form id="select" method="GET" name="basisweek" accept-charset="UTF-8">
 <?php if ($prev_week) { ?>
 <a href="?q=<?=urlencode($_GET['q']).$link_tail_wowk.$prev_week.$link_tail_tail?>">&lt;</a>
-<? } else { ?>
+<?php } else { ?>
 <del>&lt;</del>
-<? } ?>
+<?php } ?>
 <select autocomplete="off" name="wk">
 <?=$week_options?>
 </select>
 <?php if ($next_week) { ?>
 <a href="?q=<?=urlencode($_GET['q']).$link_tail_wowk.$next_week.$link_tail_tail?>">&gt;</a>
-<? } else { ?>
+<?php } else { ?>
 <del>&gt;</del>
-<? } ?>
+<?php } ?>
 <select autocomplete="off" name="bw">
 <option <?=($bw == 'b')?'selected ':''?>value="b">basisrooster</option>
 <option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>
 </select>
-<input name="q" type="hidden" value="<? echo(htmlenc($_GET['q'])) ?>">
+<input name="q" type="hidden" value="<?=htmlenc($_GET['q'])?>">
 </form>
 </div>
 <div style="clear: both">
@@ -412,110 +412,93 @@ EOS
 <?php foreach ($res_vak as $entity_name) { echo(' '.make_link($entity_name, substr($entity_name, 1))); }; ?>
 <p>Categorie&euml;n:
 <?php foreach ($res_cat as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
-<?
+<?php
 } else {
 	?><p><?php
 	if ($_GET['q']) {
 		if ($bw == 'b') echo('Basisrooster');
 		else echo('Weekrooster');
-		?> van <? echo($type.'.');
+		?> van <?=$type?><?php
 	} 
 ?>
 <p><table id="rooster"><tr><th></th>
-<th>ma <? echo date("j-n", $thismonday)          ?></th>
-<th>di <? echo date("j-n", $thismonday +  86400) ?></th>
-<th>wo <? echo date("j-n", $thismonday + 172800) ?></th>
-<th>do <? echo date("j-n", $thismonday + 259200) ?></th>
-<th>vr <? echo date("j-n", $thismonday + 345600) ?></th>
+<th>ma <?php echo date("j-n", $thismonday)          ?></th>
+<th>di <?php echo date("j-n", $thismonday +  86400) ?></th>
+<th>wo <?php echo date("j-n", $thismonday + 172800) ?></th>
+<th>do <?php echo date("j-n", $thismonday + 259200) ?></th>
+<th>vr <?php echo date("j-n", $thismonday + 345600) ?></th>
 </tr>
-<? 
+<?php 
 	$les = next($data);
 	for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
 <tr class="spacer"><td><?=$i?></td>
-<? 	for ($j = 1; $j <= 5; $j++) { ?>
-<td><?
-		while ($les && $les['f_d'] == $j && $les['f_u'] == $i) {
-			/* here we decide if and how the lesson is displayed */
-			if ($les['f_s'] == 'cancelled') {
-				// deze les is uitgevallen
-				$extra = ' uitval';
-				$comment = '(uitval)';
-			} else if ($les['f_s'] == 'new') {
-				// deze les is extra
-				$extra = ' extra';
-				$comment = '(extra)';
-			} else if ($les['f_v'] == 0) { // les is in weekrooster vervangen
-				// als:
-				// - de vervangende les zichtbaar is
-				// - op hetzelfde uur staat als de vervangende les
-				// ---> toon deze invalid les dan niet
-				if (isset($data[$les['s_id']]) &&
-						$les['f_d'] == $les['s_d'] &&
-						$les['f_u'] == $les['s_u']) {
-					$les = next($data);
-					continue;
-				}
-				// in andere gevallen: toon de les als verplaatstnaar
-				$extra = ' verplaatstnaar';
-				$comment = '(naar '.print_diff($les).')';
-			} else if ($les['f_v'] == 1 && $les['s_id']) {
-				// deze les is het de nieuwe les die bij een verplaatste
-				// les hoort, als:
-				// - als de oorspronkelijke les ook zichtbaar is
-				//   (als in: in dit rooster hoort, hij is al wel verborgen)
-				// - op hetzelfde uur staat als de oorspronkelijke les
-				// ----> toon deze les dan in geel
-				if (isset($data[$les['s_id']]) &&
-						$les['f_d'] == $les['s_d'] &&
-						$les['f_u'] == $les['s_u']) {
-					$extra = ' gewijzigd';
-					$comment = '(was '.print_diff($les).')';
+<?php 		for ($j = 1; $j <= 5; $j++) { ?>
+<td><?php		while ($les && $les['f_d'] == $j && $les['f_u'] == $i) {
+				/* here we decide if and how the lesson is displayed */
+				if ($les['f_s'] == 'cancelled') {
+					// deze les is uitgevallen
+					$extra = ' uitval';
+					$comment = '(uitval)';
+				} else if ($les['f_s'] == 'new') {
+					// deze les is extra
+					$extra = ' extra';
+					$comment = '(extra)';
+				} else if ($les['f_v'] == 0) { // les is in weekrooster vervangen
+					// als:
+					// - de vervangende les zichtbaar is
+					// - op hetzelfde uur staat als de vervangende les
+					// ---> toon deze invalid les dan niet
+					if (isset($data[$les['s_id']]) &&
+							$les['f_d'] == $les['s_d'] &&
+							$les['f_u'] == $les['s_u']) {
+						$les = next($data);
+						continue;
+					}
+					// in andere gevallen: toon de les als verplaatstnaar
+					$extra = ' verplaatstnaar';
+					$comment = '(naar '.print_diff($les).')';
+				} else if ($les['f_v'] == 1 && $les['s_id']) {
+					// deze les is het de nieuwe les die bij een verplaatste
+					// les hoort, als:
+					// - als de oorspronkelijke les ook zichtbaar is
+					//   (als in: in dit rooster hoort, hij is al wel verborgen)
+					// - op hetzelfde uur staat als de oorspronkelijke les
+					// ----> toon deze les dan in geel
+					if (isset($data[$les['s_id']]) &&
+							$les['f_d'] == $les['s_d'] &&
+							$les['f_u'] == $les['s_u']) {
+						$extra = ' gewijzigd';
+						$comment = '(was '.print_diff($les).')';
+					} else {
+						$extra = ' verplaatstvan';
+						$comment = '(van '.print_diff($les).')';
+					}
 				} else {
-					$extra = ' verplaatstvan';
-					$comment = '(van '.print_diff($les).')';
+					// als de les nu nog niet aan de orde is geweest,
+					// dan is het een normal les!
+					$extra = '';
+					$comment = '';
 				}
-			} else {
-				// als de les nu nog niet aan de orde is geweest,
-				// dan is het een normal les!
-				$extra = '';
-				$comment = '';
-			}
-			$info = array();
-			add_lv($info, $les['f_groups'], $les['f_subjects']);
-			add($info, $les['f_teachers']);
-			add($info, $les['f_locations']); ?>
+				$info = array();
+				add_lv($info, $les['f_groups'], $les['f_subjects']);
+				add($info, $les['f_teachers']);
+				add($info, $les['f_locations']); ?>
 <div class="les<?=$extra?>">
-<?			if (count($info)) { ?>
+<?php				if (count($info)) { ?>
 <table title="<?=$les['zid']?>">
 <tr><td><?=implode("</td>\n<td>/</td>\n<td>", $info)?></td></tr>
 </table>
-<?		 	}
-			if ($comment) { ?>
+<?php			 	}
+				if ($comment) { ?>
 <div class="comment"><?=$comment?></div>
-<?			} ?>
+<?php				} ?>
 <div class="clear"></div></div>
-<?			$les = next($data);
-		}
-/*
-	$key = $i.$j;
-	if (!array_key_exists($key, $totable)) continue;
-	foreach($totable[$key] as $les) {
-		$info = array();
-		$extra = $les['extra']; 
-		$comment = $les['comment'];
-		add_lv($info, $les['groups'], $les['subjects']);
-		add($info, $les['teachers']);
-		add($info, $les['locations']);
-		echo('<div class="les'.$extra.'">');
-		if (count($info)) echo('<table title="'.$les['appointmentInstanceId'].'"><tr><td>'.implode('</td><td>/</td><td>', $info).'</td></tr></table>');
-		if ($comment) echo('<div class="comment">'.$comment.'</div>');
-		echo('<div class="clear"></div></div>');
-		//print_r($les);
-	}*/
+<?php				$les = next($data);
+			}
 ?></td>
-<?php } ?>
+<?php		 } ?>
 </tr>
-<?php }?>
+<?php	}?>
 </table>
 <?php if ($bw == 'w') { ?>
 <div class="noprint small">Kleurcodes:
