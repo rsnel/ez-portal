@@ -72,12 +72,12 @@ function zportal_json($url) {
 function zportal_json_cached($url) {
 	$filename = config('DATADIR').'cache_'.hash('sha256', $url).'.json';
 	if (is_readable($filename) && ($ret = file_get_contents($filename)) !== FALSE) {
-		echo("cache hit $filename!\n");
 		if (($json = json_decode($ret, true)) == NULL) fatal("unable to decode JSON data");
 		return $json;
 	}
 
-	return zportal_json($url);
+	// return empty response if no cache hit to trigger
+	return array ( 'response' => array ( 'data' => array () ) );
 }
 
 function zportal_vPOST_json($command, $args) {
