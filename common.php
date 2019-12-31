@@ -104,7 +104,7 @@ function checksetarray($base) {
 
 function set_access_token_cookie($expires, $access_token = '') {
 	setcookie('access_token', $access_token, $expires,
-			dirname($_SERVER['PHP_SELF']),
+			dirname($_SERVER['PHP_SELF'].'/'),
 			$_SERVER['HTTP_HOST'], true, true);
 }
 
