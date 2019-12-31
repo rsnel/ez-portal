@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 30, 2019 at 11:41 PM
+-- Generation Time: Dec 31, 2019 at 09:26 AM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -17,7 +17,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `ez-portal_ovc`
+-- Database: `ez-portal_ovc-dev`
 --
 
 -- --------------------------------------------------------
