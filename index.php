@@ -447,6 +447,8 @@ EOS
 					// als:
 					// - de vervangende les zichtbaar is
 					// - op hetzelfde uur staat als de vervangende les
+					// (als deze les hetzelfde is als de vervangede les
+					// dan is automatisch aan deze twee voorwaarden voldaan)
 					// ---> toon deze invalid les dan niet
 					if (isset($data[$les['s_id']]) &&
 							$les['f_d'] == $les['s_d'] &&
@@ -457,7 +459,7 @@ EOS
 					// in andere gevallen: toon de les als verplaatstnaar
 					$extra = ' verplaatstnaar';
 					$comment = '(naar '.print_diff($les).')';
-				} else if ($les['f_v'] == 1 && $les['s_id']) {
+				} else if ($les['f_v'] == 1 && $les['s_id'] && $les['f_aid'] != $les['s_aid']) {
 					// deze les is het de nieuwe les die bij een verplaatste
 					// les hoort, als:
 					// - als de oorspronkelijke les ook zichtbaar is
@@ -512,7 +514,6 @@ EOS
 <?php }
 }
 ?>
-
 <p>
 <span id="updateinfo">
 Het rooster in deze week r<?=$rooster_version?>,
@@ -522,5 +523,4 @@ Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren
 om toegang te krijgen tot het roosterbord. <a href="forget_access_token.php">[cookie van <?=
 $access_info['entity_name']?> verwijderen]</a>
 </span>
-
 <?php html_end(); ?>

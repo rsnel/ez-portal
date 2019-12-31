@@ -607,12 +607,12 @@ function master_query($entity_ids, $kind, $rooster_version, $week_id) {
 		$where = '';
 	}
 	return db_query(<<<EOQ
-SELECT f_l.log_id f_id, f_l.appointment_instance_zid zid, f_a.appointment_day f_d,
-	f_a.appointment_timeSlot f_u, f_l.appointment_valid f_v, f_l.appointment_state f_s,
-	f_a.groups f_groups, f_a.subjects f_subjects,
+SELECT f_l.log_id f_id, f_a.appointment_id f_aid, f_l.appointment_instance_zid zid,
+	f_a.appointment_day f_d, f_a.appointment_timeSlot f_u, f_l.appointment_valid f_v,
+	f_l.appointment_state f_s, f_a.groups f_groups, f_a.subjects f_subjects,
 	f_a.teachers f_teachers, f_a.locations f_locations,
-	pairs.paired_log_id s_id, s_a.appointment_day s_d, s_a.appointment_timeSlot s_u,
-	s_a.groups s_groups, s_a.subjects s_subjects,
+	pairs.paired_log_id s_id, s_a.appointment_id s_aid, s_a.appointment_day s_d,
+	s_a.appointment_timeSlot s_u, s_a.groups s_groups, s_a.subjects s_subjects,
 	s_a.teachers s_teachers, s_a.locations s_locations
 FROM log AS f_l
 LEFT JOIN (
