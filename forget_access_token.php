@@ -1,13 +1,15 @@
 <?php
 
 require_once('common.php');
+require_once('html.php');
 
 $access_info = get_access_info();
 
-remove_access_token_cookie();
+html_start($_SERVER['EZ_PORTAL_INSTITUTION']); ?>
 
-db_exec("DELETE FROM access WHERE access_id = ?", $access_info['access_id']);
+Weet het zeker? Als je je toegangscookie verwijdert, dan heb je pas weer toegang tot het roosterbord via
+deze pagina als je opnieuw een koppelcode invoert.
 
-header('Location: https://'.$_SERVER['HTTP_HOST'].dirname($_SERVER['PHP_SELF']).'/');
+<p><a href="do_forget_access_token.php">[cookie verwijderen]</a>
 
-?>
+<?php html_end(); ?>
