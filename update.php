@@ -13,20 +13,20 @@ echo("using portal version ".
 
 echo("updating schoolsInSchoolYear\n");
 update_sisys();
-//echo("updating branchesOfSchools\n");
-//update_boss();
-//echo("updating holidays\n");
-//update_holidays();
-//echo("updating users\n");
-//update_users();
+echo("updating branchesOfSchools\n");
+update_boss();
+echo("updating holidays\n");
+update_holidays();
+echo("updating users\n");
+update_users();
 echo("updating categories\n");
 update_categories();
-//echo("updating groups\n");
-//update_groups();
-//recapitalize_lesgroepen();
-//echo("updating rooms\n");
-//update_rooms();
-//echo("updating weeks\n");
-//update_weeks();
+echo("updating groups\n");
+update_groups();
+recapitalize_lesgroepen();
+echo("updating rooms\n");
+update_rooms();
+echo("updating weeks\n");
+update_weeks();
 check_doubles();
 ?>

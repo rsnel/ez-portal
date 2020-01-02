@@ -375,7 +375,7 @@ function update_rooms() {
 		db_exec(<<<EOQ
 			INSERT IGNORE INTO entity_zids
 				( entity_id, bos_id, sisy_id, entity_zid )
-			VALUES ( ?, ?, ?, ? )"
+			VALUES ( ?, ?, ?, ? )
 			EOQ, $entity_id, $bos_id, $sisy_id, dereference($room, 'id'));
 	}
 }
@@ -420,7 +420,6 @@ function get_access_info() {
 function update_weeks() {
 	$sisys = db_all_assoc_rekey('SELECT sisy_id, sisy_year FROM sisys');
 	foreach ($sisys as $sisy_id => $sisy_year) {
-		echo("$sisy_id $sisy_year\n");
 		update_weeks_of_sisy($sisy_id, $sisy_year);
 	}
 }
@@ -440,7 +439,6 @@ function update_weeks_of_sisy($sisy_id, $startYear) {
 			break;
 		}
 	}
-	print_r($august);
 
 	if (!isset($august[$i])) fatal('impossible');
 
