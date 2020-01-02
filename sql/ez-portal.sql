@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 31, 2019 at 09:26 AM
+-- Generation Time: Jan 02, 2020 at 11:08 AM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -19,6 +19,16 @@ SET time_zone = "+00:00";
 --
 -- Database: `ez-portal_ovc-dev`
 --
+
+DELIMITER $$
+--
+-- Functions
+--
+CREATE DEFINER=`root`@`localhost` FUNCTION `WKTM` (`ts` TIMESTAMP) RETURNS VARCHAR(16) CHARSET utf8mb4 NO SQL
+    DETERMINISTIC
+RETURN DATE_FORMAT(ts, CONCAT('wk%v', CASE WEEKDAY(ts) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo' WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END, '%H:%i'))$$
+
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -159,7 +169,7 @@ CREATE TABLE `holidays` (
 CREATE TABLE `roosters` (
   `rooster_id` int(11) NOT NULL,
   `week_id` int(11) NOT NULL,
-  `rooster_last_modified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `rooster_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `rooster_type` enum('basis','week') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `rooster_ok` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;

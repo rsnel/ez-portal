@@ -7,7 +7,7 @@ $access_info = get_access_info();
 
 if (!$access_info) {
 	html_start($_SERVER['EZ_PORTAL_INSTITUTION']); ?>
-	Als je toegang hebt tot <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl, dan kun je daar inloggen een koppelcode van 12 cijfers aanmaken. Deze code kun je dan hieronder invullen om het rooster te kunnen raadplegen.
+	Als je toegang hebt tot <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl, dan kun je daar inloggen en een koppelcode van 12 cijfers aanmaken. Klik op het rechthoekje met het uitgaande pijltje in de rode kolom links op het scherm en klik daarna op 'Koppel App'. De code die je dan krijgt kun je hieronder invullen om het rooster te kunnen raadplegen.
 
 <p>
 <form action="req_access_token.php" method="POST" accept-charset="UTF-8">
@@ -16,6 +16,7 @@ instelling: <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>
 <p><input type="submit" value="Koppel en plaats toegangscookie">
 </form>	
 <p>Als de koppeling lukt, dan wordt er een cookie met de naam <code>access_token</code> geplaatst in je browser. Dit cookie zorgt ervoor dat je steeds, zonder inloggen of koppelen, bij het rooster kunt. In de website heb je altijd de mogelijkheid om het cookie te verwijderen. Je gaat vanzelfsprekend akkoord met het plaatsen van dit cookie.
+<p>Het roosterbord maakt gebruik van de publieke <a href="https://confluence.zermelo.nl/display/DEV/Introduction">Zermelo API</a> om informatie binnen te halen.
 <?php	html_end();
 	exit;
 }
@@ -32,7 +33,7 @@ $current_year = date('o', $offset);
 
 $weeks = db_all_assoc_rekey(<<<EOQ
 SELECT week_id, year, week, sisy_id, sisy_school, sisy_project,
-	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp
+	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp, WKTM(week_last_sync) last_sync
 FROM weeks
 JOIN (
 	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
@@ -78,29 +79,32 @@ if (!$week_id) {
 
 //echo("week_id=$week_id\n");
 $rooster_info = db_single_row(<<<EOQ
-SELECT version,
-	DATE_FORMAT(last_modified, CONCAT('wk%v',
-		CASE WEEKDAY(last_modified) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo'
-		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
-	'%H:%i')) last_modified,
-	DATE_FORMAT(last_synced, CONCAT('wk%v',
-		CASE WEEKDAY(last_synced) WHEN 0 THEN 'ma' WHEN 1 THEN 'di' WHEN 2 THEN 'wo'
-		WHEN 3 THEN 'do' WHEN 4 THEN 'vr' WHEN 5 THEN 'za' WHEN 6 THEN 'zo' END,
-	'%H:%i')) last_synced
+SELECT version, WKTM(last_modified) last_modified, rooster_type type
 FROM (
-	SELECT COUNT(rooster_id) version,
-		MAX(rooster_last_modified) last_modified,
-		MAX(week_last_sync) last_synced
+	SELECT COUNT(rooster_id) version, rooster_type,
+		MAX(rooster_lastModified) last_modified
 	FROM roosters
-	JOIN weeks USING (week_id)
 	WHERE rooster_ok = 1
 	AND week_id = ?
 ) AS tmp
-EOQ
-, $week_id);
+EOQ, $week_id);
 
 if (!$rooster_info) fatal("no rooster info?!?!?!");
 $rooster_version = $rooster_info['version'];
+
+$pversion_info = db_single_row(<<<EOQ
+SELECT version, WKTM(last_modified) last_modified
+FROM (
+	SELECT COUNT(pversion_id) version,
+		MAX(pversion_lastModified) last_modified
+	FROM pversions
+	WHERE pversion_ok = 1
+	AND week_id = ?
+) AS tmp
+EOQ, $week_id);
+
+if (!$pversion_info) fatal("no pversion info?!?!?!");
+$participations_version = $pversion_info['version'];
 
 $thismonday = $weeks[$week_id]['monday_unix_timestamp'];
 $sisy_id = $weeks[$week_id]['sisy_id'];
@@ -239,32 +243,33 @@ if ($entity_multiple) {
 switch ($entity_type) {
 case 'LESGROEP':
 case 'STAMKLAS':
-	$lln_entity_ids = lln_query($entity_id, $rooster_version, $week_id);
-	$data = master_query($lln_entity_ids, 'students', $rooster_version, $week_id);
+	$lln_entity_ids = lln_query($entity_id, $rooster_version, $participations_version, $week_id);
+	html_print_r($lln_entity_ids);
+	$data = master_query($lln_entity_ids, 'students', $rooster_version, $participations_version, $week_id);
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
-	$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet goed weergegven</span>';
+	$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet volledig weergegven</span>';
 	break;
 case 'CATEGORIE':
 	$group_entity_ids = db_single_field('SELECT GROUP_CONCAT(entity_id) FROM entity_zids WHERE sisy_id = ? AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )', $sisy_id, $bos_id);
-	$data = master_query($group_entity_ids, 'groups', $rooster_version, $week_id);
+	$data = master_query($group_entity_ids, 'groups', $rooster_version, $participations_version, $week_id);
 	if ($entity_multiple) $type = 'categorie&euml;n '.$entity_name;
 	else $type = 'categorie '.$entity_name;
 	break;
 case 'LOKAAL':
 	if ($entity_multiple) $type = 'lokalen '.$entity_name;
 	else $type = 'lokaal '.$entity_name;
-	$data = master_query($entity_id, 'locations', $rooster_version, $week_id);
+	$data = master_query($entity_id, 'locations', $rooster_version, $participations_version, $week_id);
 	break;
 case 'PERSOON':
 	$isWhat = db_single_row("SELECT * FROM users WHERE entity_id = ?", $entity_id);
 	if ($isWhat['isFamilyMember']) fatal("$entity_name is ouder, dat kan het systeem nog niet aan...");
 	if ($isWhat['isEmployee'] && $isWhat['isStudent']) fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
 	if ($isWhat['isStudent']) {
-		$data = master_query($entity_id, 'students', $rooster_version, $week_id);
+		$data = master_query($entity_id, 'students', $rooster_version, $participations_version, $week_id);
 		if ($entity_multiple) $type = 'leerlingen '.$entity_name;
 		else $type = 'leerling '.$entity_name;
-		$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet goed weergegven</span>';
+		$type .= ' <span class="unknown">door nog ontbrekende informatie kunnen uitgevallen en vrijgestelde lessen ontbreken</span>';
 	}
 	if ($isWhat['isEmployee']) {
 		$data = master_query($entity_id, 'teachers', $rooster_version, $week_id);
@@ -288,7 +293,6 @@ default:
 //db_dump_result($data);
 
 $data = db_build_assoc_rekey($data);
-//exit;
 
 cont:
 
@@ -396,7 +400,11 @@ EOS
 <?php } ?>
 <select autocomplete="off" name="bw">
 <option <?=($bw == 'b')?'selected ':''?>value="b">basisrooster</option>
+<?php if ($rooster_info['type'] == 'week') { ?>
 <option <?=($bw == 'w')?'selected ':''?>value="w">weekrooster</option>
+<?php } else { ?>
+<option disabled>weekrooster</option>
+<?php } ?>
 </select>
 <input name="q" type="hidden" value="<?=htmlenc($_GET['q'])?>">
 </form>
@@ -432,7 +440,9 @@ EOS
 <th>vr <?php echo date("j-n", $thismonday + 345600) ?></th>
 </tr>
 <?php 
-	$les = next($data);
+	// be sure to get the first element of $data
+	reset($data);
+	$les = current($data);
 	for ($i = 1; $i <= config('MAX_LESUUR'); $i++) { ?>
 <tr class="spacer"><td><?=$i?></td>
 <?php 		for ($j = 1; $j <= 5; $j++) { ?>
@@ -522,11 +532,11 @@ EOS
 }
 ?>
 <span id="updateinfo">
-Het rooster in deze week r<?=$rooster_version?>,
+Rooster v<?=$rooster_version?>,
 laatste wijziging <?=$rooster_info['last_modified']?>,
-laatste synchronisatie <?=$rooster_info['last_synced']?>.
-Als je je toegangscookie verwijdert, dan moet je opniew een koppelcode invoeren
-om toegang te krijgen tot het roosterbord.
+deelnames v<?=$participations_version?>,
+laatste wijziging <?=$pversion_info['last_modified']?>,
+laatste synchronisatie <?=$weeks[$week_id]['last_sync']?>.
 <a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>
 </span>
 <?php html_end(); ?>
