@@ -726,7 +726,7 @@ function lln_query($entity_ids, $rooster_version, $participations_version, $week
 		LEFT JOIN (
 			SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
 			FROM log
-			WHERE rooster_version <= ?
+			WHERE rooster_version <= $rooster_version
 		) AS next_log USING (log_id, week_id)
 		JOIN appointments USING (appointment_id)
 		JOIN entities2egrps AS appointments2groups
@@ -738,15 +738,15 @@ function lln_query($entity_ids, $rooster_version, $participations_version, $week
 				SELECT week_id, prev_participation_id AS participation_id,
 					participation_id AS obsolete
 				FROM participations
-				WHERE participations_version <= ?
+				WHERE participations_version <= $participants_version
 			) AS next_participations USING (week_id, participation_id)
-			WHERE participations_version <= ? AND obsolete IS NULL
+			WHERE participations_version <= $participants_version AND obsolete IS NULL
 		) AS valid_participations USING (week_id, appointment_instance_zid)
 		JOIN entities2egrps AS log2students
 		ON log2students.egrp_id = valid_participations.students_egrp_id
 		WHERE appointments2groups.entity_id IN ( $entity_ids )
-		AND rooster_version <= ? AND week_id = ?
-		EOQ, $rooster_version, $rooster_version, $participations_version, $participations_version, $week_id);
+		AND rooster_version <= $rooster_version AND week_id = $week_id
+		EOQ);
 }
 
 // warn when there are doubly named things
@@ -891,6 +891,18 @@ function get_weeks_to_update($past = false) {
 		EOQ);
 }
 
+function schedule_open($rooster_id) {
+	$rooster_ok = $rooster_id?db_single_field(
+		'SELECT rooster_ok FROM roosters WHERE rooster_id = ?', $rooster_id):1;
+	return !$rooster_ok;
+}
+
+function participations_open($pversion_id) {
+	$participations_ok = $pversion_id?db_single_field(
+		'SELECT pversion_ok FROM pversions WHERE pversion_id = ?', $pversion_id):1;
+	return !$participations_ok;
+}
+
 // this function will fail if the 'appointments' lock is not held
 function update_appointments_in_week($week) {
 	lock_renew('appointments', 'updating appointments in '.$week['sisy_project'].' '.
@@ -1013,12 +1025,10 @@ function update_appointments_in_week($week) {
 	// rooster_version and rooster_id are passed by reference!
 	merge_appointments_in_week($json, $rooster_version, $week['week_id'], $rooster_id, $participations_version, $pversion_id);
 
-	$rooster_ok = $rooster_id?db_single_field(
-		'SELECT rooster_ok FROM roosters WHERE rooster_id = ?', $rooster_id):1;
-	$pversion_ok = $pversion_id?db_single_field(
-		'SELECT pversion_ok FROM pversions WHERE pversion_id = ?', $pversion_id):1;
+	$schedule_open = schedule_open($rooster_id);
+	$participations_open = participations_open($pversion_id);
 
-	if (!$rooster_ok) {
+	if ($schedule_open) {
 		// we need to make pairs, because there is a new schedule version
 		generate_pairs($week['week_id'], $rooster_version);
 
@@ -1030,18 +1040,18 @@ function update_appointments_in_week($week) {
 			$type, $rooster_id);
 	}
 
-	if ($pversion_ok && $rooster_ok) {
+	if (!$schedule_open && !$participations_open) {
 		// no updates to schedule and participations
 		db_exec('UPDATE weeks SET week_last_sync = FROM_UNIXTIME( ? ) WHERE week_id = ?',
 			$week_last_sync, $week['week_id']);
-	} else if ($pversion_ok && !$rooster_ok) {
+	} else if (!$participations_open && $schedule_open) {
 		// only update to schedule
 		db_exec(<<<EOQ
 			UPDATE roosters JOIN weeks USING (week_id)
 			SET rooster_ok = 1, week_last_sync = FROM_UNIXTIME( ? )
 			WHERE rooster_id = ?
 			EOQ, $week_last_sync, $rooster_id);
-	} else if (!$pversion_ok && $rooster_ok) {
+	} else if ($participations_open && !$schedule_open) {
 		// only update to participations
 		db_exec(<<<EOQ
 			UPDATE pversions JOIN weeks USING (week_id)
@@ -1121,33 +1131,88 @@ function get_appointment_id($a) {
 		"schedulerRemark_text_id = $schedulerRemark_text_id", NULL);
 }
 
-function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id, &$participations_version, &$pversion_id) {
+function appointment_equal($old_appointment, $appointment_id, $appointment_instance_zid, $appointment_state, $appointment_created, $appointment_lastModified) {
+	if ($appointment_created != $old_appointment['appointment_created']) {
+		echo("appointment created has chagned? (should not happen), one must think\n");
+		return 0;
+	} else if ($appointment_id != $old_appointment['appointment_id']) {
+		echo("WARNING:contents of appointment {$old_appointment['appointment_zid']} ".
+			"has changed\n");
+		return 0;
+	} else if ($appointment_instance_zid != $old_appointment['appointment_instance_zid']) {
+		echo("WARNING: instance_zid of appointment {$old_appointment['appointment_zid']} ".
+			"has changed!?!?");
+		return 0;
+	} else if ($appointment_state != $old_appointment['appointment_state']) {
+		echo("appointment state has changed from {$old_appointment['appointment_state']} ".
+			"to $appointment_state\n");
+		return 0;
+	} else if ($appointment_lastModified != $old_appointment['appointment_lastModified']) {
+		echo("appointment lastModified has changed? (but nothing else?!?!)");
+		return 0;
+	} else return 1; // nothing has changed
+}
+
+function open_new_schedule_version_if_needed($week_id, &$rooster_id, &$rooster_version) {
+	/* open a new schedule version if needed */
+	if (schedule_open($rooster_id)) return;
+	$lastModified = db_single_field('SELECT rooster_lastModified FROM roosters WHERE rooster_id = ?',
+		$rooster_id);
+	db_exec(<<<EOQ
+		INSERT INTO roosters ( week_id, rooster_lastModified )
+		VALUES ( ?, ? )
+		EOQ, $week_id, $lastModified);
+	$rooster_id = db_last_insert_id();
+	$rooster_version++;
+	echo("opened new schedule version $rooster_version at rooster_id = $rooster_id\n");
+}
+
+function open_new_participations_version_if_needed($week_id,
+		&$pversion_id, &$participations_version) {
+	/* open a new schedule version if needed */
+	if (participations_open($pversion_id)) return;
+	$lastModified = db_single_field(
+		'SELECT pversion_lastModified FROM pversions WHERE pversion_id = ?', $pversion_id);
+	db_exec(<<<EOQ
+		INSERT INTO pversions ( week_id, pversion_lastModified )
+		VALUES ( ?, ? )
+		EOQ, $week_id, $lastModified);
+	$pversion_id = db_last_insert_id();
+	$participations_version++;
+	echo("opened new participations version $participations_version ".
+		"at pversion_id = $pversion_id\n");
+}
+
+function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id,
+		&$participations_version, &$pversion_id) {
 	lock_renew('appointments', 'merge appointment as version '.$rooster_version.
 		' in week_id='.$week_id);
 	echo("id=".dereference($a, 'id').' instance='.dereference($a, 'appointmentInstance').
 		' lastModified='.dereference($a, 'lastModified').' created='.
 		dereference($a, 'created').' hidden='.dereference($a, 'hidden')."\n");
 
+	/* first handle the appointment */
 	$zid = dereference($a, 'id');
 	$instance_zid = dereference($a, 'appointmentInstance');
+	$appointment_lastModified = dereference($a, 'appointmentLastModified');
+	$hidden = dereference($a, 'hidden');
 
 	// let's see if we already have this appointment
 	$old_appointment = db_single_row(<<<EOQ
-		SELECT log_id, rooster_version FROM log
+		SELECT log_id, rooster_version, appointment_id, appointment_instance_zid,
+			appointment_zid, appointment_state,
+			UNIX_TIMESTAMP(appointment_created) appointment_created,
+			UNIX_TIMESTAMP(appointment_lastModified) appointment_lastModified
+		FROM log
 		LEFT JOIN (
 			SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
 			FROM log
-			WHERE rooster_version <= ?
+			WHERE rooster_version <= $rooster_version
 		) next_log USING (log_id, week_id)
-		WHERE week_id = ? AND rooster_version <= ? AND appointment_zid = ? AND obsolete IS NULL
-		EOQ, $week_id, $rooster_version, $rooster_version, $zid);
+		WHERE week_id = $week_id AND rooster_version <= $rooster_version
+		AND appointment_zid = ? AND obsolete IS NULL
+		EOQ, $zid);
 
-	if ($old_appointment) fatal("we already have an old version of this version of the ".
-		"appointment, merging is yet to be implemented");
-
-	/* first handle the appointment */
-	$appointment_lastModified = dereference($a, 'appointmentLastModified');	
-	$hidden = dereference($a, 'hidden');
 	if (!$hidden) {
 		$appointment_id = get_appointment_id($a);
 		$created = dereference($a, 'created');
@@ -1161,26 +1226,40 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 		else fatal("impossible combination of valid, new and cancelled for non ".
 			"hidden appointment");
 
-		/* since we can't handle updating appointments yet and this one is 
-		 * not hidden, we must check if we already have a new rooster open */
-		$ok = db_single_field("SELECT rooster_ok FROM roosters WHERE rooster_id = ?",
-			$rooster_id);
-		if ($rooster_version == 0 || $ok) {
-			db_exec('INSERT INTO roosters ( week_id ) VALUES ( ? )', $week_id);
-			$rooster_id = db_last_insert_id();
-			$rooster_version++;
-			echo("opened new rooster version $rooster_version at rooster_id = $rooster_id\n");
+		// if the old appointment exists and is unchanged, do nothing
+		$prev_log_id = false;
+		if ($old_appointment && !appointment_equal($old_appointment, $appointment_id,
+				$instance_zid, $state, $created, $appointment_lastModified)) {
+			$prev_log_id = $old_appointment['log_id'];
+		} else if (!$old_appointment) {
+			$prev_log_id = NULL;
 		}
 
-		db_exec(<<<EOQ
-			INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id,
-				appointment_zid, appointment_instance_zid, appointment_state,
-				appointment_created, appointment_lastModified )
-			VALUES ( ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?) )
-			EOQ, NULL, $week_id, $rooster_version, $appointment_id, $zid,
-			$instance_zid, $state, $created, $appointment_lastModified);
+		if ($prev_log_id !== false) {
+			/* now we must write something to the new version of the schedule */
+			open_new_schedule_version_if_needed($week_id, $rooster_id, $rooster_version);
+
+			db_exec(<<<EOQ
+				INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id,
+					appointment_zid, appointment_instance_zid, appointment_state,
+					appointment_created, appointment_lastModified )
+				VALUES ( ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?) )
+				EOQ, $prev_log_id, $week_id, $rooster_version, $appointment_id, $zid,
+				$instance_zid, $state, $created, $appointment_lastModified);
+		} else {
+			echo("no change in appointment, do nothing, maybe some participations later\n");
+		}
 	} else if ($old_appointment) {
-		fatal("we can't handle existing appointments that must be hidden yet");
+		// we must hide an appointment, we do that like this
+		open_new_schedule_version_if_needed($week_id, $rooster_id, $rooster_version);
+
+		// does lastModified change when appointment is hidden?
+		db_exec(<<<EOQ
+			INSERT INTO log ( prev_log_id, week_id,
+				rooster_version, appointment_lastModified )
+			VALUES ( ?, ?, ?, FROM_UNIXTIME(?) )
+			EOQ, $old_appointment['log_id'], $week_id, $rooster_version,
+			$appointment_lastModified);
 	} 
 
 	db_exec(<<<EOQ
@@ -1212,26 +1291,28 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 		EOQ, $participations_version, $instance_zid, $participations_version);
 	
 	if ($old_participation) {
-		if ($old_participation['participations_version'] == $participations_version) {
+		if (participations_open($pversion_id) && $old_participation['participations_version'] == $participations_version) {
 			if ($students_egrp_id != $old_participation['students_egrp_id'])
 				fatal("weird?!?! participation in same instance_zid is different ".
 					"in same run");
-		} else {
-			print_r($old_participation);
-			echo("students_egrp_id=$students_egrp_id\n");
-			fatal("we already have old participation information, can't deal with it yet");
-		}
+		} else if ($students_egrp_id != $old_participation['students_egrp_id'])  {
+			echo("overwrite obsolete participation\n");
+			open_new_participations_version_if_needed($week_id,
+				$pversion_id, $participations_version);
+			db_exec(<<<EOQ
+				INSERT INTO participations ( prev_participation_id, week_id,
+					participation_lastModified, participations_version,
+					appointment_instance_zid, students_egrp_id )
+				VALUES ( ?, ?, FROM_UNIXTIME(?), ?, ?, ? )
+				EOQ, $old_participation['participation_id'], $week_id,
+				$participation_lastModified, $participations_version,
+				$instance_zid, $students_egrp_id);
+		} // participation data didn't change, do nothing
 	} else {
 		/* since we can't handle updating participations yet
 		 * we must check if we already have a new pversions open */
-		$ok = db_single_field("SELECT pversion_ok FROM pversions WHERE pversion_id = ?",
-			$pversion_id);
-		if ($participations_version == 0 || $ok) {
-			db_exec('INSERT INTO pversions ( week_id ) VALUES ( ? )', $week_id);
-			$pversion_id = db_last_insert_id();
-			$participations_version++;
-			echo("opened new participations version $rooster_version at rooster_id = $rooster_id\n");
-		}
+		open_new_participations_version_if_needed($week_id,
+			$pversion_id, $participations_version);
 		db_exec(<<<EOQ
 			INSERT INTO participations ( prev_participation_id, week_id,
 				participation_lastModified, participations_version,
@@ -1240,7 +1321,6 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 			EOQ, NULL, $week_id, $participation_lastModified, $participations_version,
 			$instance_zid, $students_egrp_id);
 	}
-
 
 	db_exec(<<<EOQ
 		UPDATE pversions
