@@ -243,36 +243,51 @@ if ($entity_multiple) {
 switch ($entity_type) {
 case 'LESGROEP':
 case 'STAMKLAS':
-	$lln_entity_ids = lln_query($entity_id, $rooster_version, $participations_version, $week_id);
-	html_print_r($lln_entity_ids);
-	$data = master_query($lln_entity_ids, 'students', $rooster_version, $participations_version, $week_id);
+	$lln_entity_ids = lln_query($entity_id, $rooster_version,
+		$participations_version, $week_id);
+	$data = master_query($lln_entity_ids, 'students', $rooster_version,
+		$participations_version, $week_id);
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
-	$type .= ' <span class="unknown">door nog ontbrekende informatie worden leerling- en groepsroosters mogelijk niet volledig weergegven</span>';
+	$type .= <<<EOT
+		<span class="unknown">door nog ontbrekende informatie worden
+		leerling- en groepsroosters mogelijk niet volledig weergegven</span>
+		EOT;
 	break;
 case 'CATEGORIE':
-	$group_entity_ids = db_single_field('SELECT GROUP_CONCAT(entity_id) FROM entity_zids WHERE sisy_id = ? AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )', $sisy_id, $bos_id);
-	$data = master_query($group_entity_ids, 'groups', $rooster_version, $participations_version, $week_id);
+	$group_entity_ids = db_single_field(<<<EOQ
+		SELECT GROUP_CONCAT(entity_id)
+		FROM entity_zids WHERE sisy_id = ?
+		AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )
+		EOQ, $sisy_id, $bos_id);
+	$data = master_query($group_entity_ids, 'groups', $rooster_version,
+		$participations_version, $week_id);
 	if ($entity_multiple) $type = 'categorie&euml;n '.$entity_name;
 	else $type = 'categorie '.$entity_name;
 	break;
 case 'LOKAAL':
 	if ($entity_multiple) $type = 'lokalen '.$entity_name;
 	else $type = 'lokaal '.$entity_name;
-	$data = master_query($entity_id, 'locations', $rooster_version, $participations_version, $week_id);
+	$data = master_query($entity_id, 'locations', $rooster_version,
+		$participations_version, $week_id);
 	break;
 case 'PERSOON':
 	$isWhat = db_single_row("SELECT * FROM users WHERE entity_id = ?", $entity_id);
-	if ($isWhat['isFamilyMember']) fatal("$entity_name is ouder, dat kan het systeem nog niet aan...");
-	if ($isWhat['isEmployee'] && $isWhat['isStudent']) fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
+	if ($isWhat['isFamilyMember'])
+		fatal("$entity_name is ouder, dat kan het systeem nog niet aan...");
+	if ($isWhat['isEmployee'] && $isWhat['isStudent'])
+		fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
 	if ($isWhat['isStudent']) {
-		$data = master_query($entity_id, 'students', $rooster_version, $participations_version, $week_id);
+		$data = master_query($entity_id, 'students', $rooster_version,
+			$participations_version, $week_id);
 		if ($entity_multiple) $type = 'leerlingen '.$entity_name;
 		else $type = 'leerling '.$entity_name;
-		$type .= ' <span class="unknown">door nog ontbrekende informatie kunnen uitgevallen en vrijgestelde lessen ontbreken</span>';
+		$type .= ' <span class="unknown">door nog ontbrekende informatie kunnen '.
+			'uitgevallen en vrijgestelde lessen ontbreken</span>';
 	}
 	if ($isWhat['isEmployee']) {
-		$data = master_query($entity_id, 'teachers', $rooster_version, $week_id);
+		$data = master_query($entity_id, 'teachers', $rooster_version,
+			$participations_version, $week_id);
 		if ($entity_multiple) $type = 'docenten '.$entity_name;
 		else $type = 'docent '.$entity_name;
 	}
@@ -280,11 +295,12 @@ case 'PERSOON':
 case 'VAK':
 	if ($entity_multiple) $type = 'vakken '.$entity_name;
 	else $type = 'vak '.$entity_name;
-	$data = master_query($entity_id, 'subjects', $rooster_version, $week_id);
+	$data = master_query($entity_id, 'subjects', $rooster_version,
+		$participations_version, $week_id);
 	break;
 case '*':
 	$type = '*';
-	$data = master_query(NULL, '', $rooster_version, $week_id);
+	$data = master_query(NULL, '', $rooster_version, $participations_version, $week_id);
 	break;
 default:
 	fatal('onmogelijk type');
@@ -363,14 +379,13 @@ function print_diff($row) {
 }
 
 html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
-$(function(){
-	// focus search box
-	$('#q').focus();
-	// autosubmit of a selectbox changes
-	$('#select>select').change(function () { $('#select').submit(); });
-});
-EOS
-); ?>
+	$(function(){
+		// focus search box
+		$('#q').focus();
+		// autosubmit of a selectbox changes
+		$('#select>select').change(function () { $('#select').submit(); });
+	});
+	EOS); ?>
 <p><div class="noprint" style="float: left">
 <form id="search" method="GET" name="search" accept-charset="UTF-8">
 <input type="submit" value="Zoek:">

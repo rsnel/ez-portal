@@ -257,13 +257,11 @@ function update_holiday($holiday) {
 	$holiday_id = db_get_id('holiday_id', 'holidays', 'holiday_zid', $holiday_zid);
 
 	db_exec(<<<EOQ
-UPDATE holidays
-SET sisy_id = $sisy_id, holiday_name = ?, holiday_start = ?, holiday_end = ?
-WHERE holiday_id = $holiday_id
-EOQ
-	, htmlenc(dereference($holiday, 'name')),
-	dereference($holiday, 'start'),
-	dereference($holiday, 'end'));
+		UPDATE holidays
+		SET sisy_id = $sisy_id, holiday_name = ?, holiday_start = ?, holiday_end = ?
+		WHERE holiday_id = $holiday_id
+		EOQ, htmlenc(dereference($holiday, 'name')),
+		dereference($holiday, 'start'), dereference($holiday, 'end'));
 }
 
 // we will assume that a student or employee has
@@ -273,22 +271,20 @@ EOQ
 // but that seems redundant)
 function get_valid_sisy_ids($kind = 'employee') {
 	return db_single_field(<<<EOQ
-SELECT GROUP_CONCAT(sisy_id)
-FROM sisys
-WHERE sisy_archived = 0
-AND ( {$kind}CanViewProjectSchedules OR {$kind}CanViewOwnSchedule )
-EOQ
-	);
+		SELECT GROUP_CONCAT(sisy_id)
+		FROM sisys
+		WHERE sisy_archived = 0
+		AND ( {$kind}CanViewProjectSchedules OR {$kind}CanViewOwnSchedule )
+		EOQ);
 }
 
 function get_valid_sisy_zids($kind = 'employee') {
 	return db_single_field(<<<EOQ
-SELECT GROUP_CONCAT(sisy_zid)
-FROM sisys
-WHERE sisy_archived = 0
-AND ( {$kind}CanViewProjectSchedules OR {$kind}CanViewOwnSchedule )
-EOQ
-	);
+		SELECT GROUP_CONCAT(sisy_zid)
+		FROM sisys
+		WHERE sisy_archived = 0
+		AND ( {$kind}CanViewProjectSchedules OR {$kind}CanViewOwnSchedule )
+		EOQ);
 }
 
 function update_holidays() {
@@ -300,7 +296,8 @@ function update_holidays() {
 }
 
 function update_categories() {
-	$categories = zportal_GET_data('departmentsofbranches', 'fields', 'id,code,branchOfSchool,schoolInSchoolYearId');
+	$categories = zportal_GET_data('departmentsofbranches', 'fields',
+		'id,code,branchOfSchool,schoolInSchoolYearId');
 	foreach ($categories as $categorie) {
 		$entity_id = db_get_entity_id(capitalize(
 			htmlenc(dereference($categorie, 'code')), 'CATEGORIE'), 'CATEGORIE');
@@ -311,7 +308,10 @@ function update_categories() {
 		if ($sisy_id != db_single_field('SELECT sisy_id FROM boss WHERE bos_id = ?', $bos_id))
 			fatal('portal inconsistent!?!?!');
 
-		db_exec("INSERT IGNORE INTO entity_zids ( entity_id, bos_id, sisy_id, entity_zid ) VALUES ( ?, ?, ?, ? )", $entity_id, $bos_id, $sisy_id, dereference($categorie, 'id'));
+		db_exec(<<<EOQ
+			INSERT IGNORE INTO entity_zids ( entity_id, bos_id, sisy_id, entity_zid )
+			VALUES ( ?, ?, ?, ? )
+			EOQ, $entity_id, $bos_id, $sisy_id, dereference($categorie, 'id'));
 	}
 }
 
@@ -324,15 +324,19 @@ function update_groups() {
 		else $entity_name = capitalize(htmlenc(dereference($group, 'extendedName')), 'LESGROEP');
 
 		$info = db_single_row(<<<EOQ
-SELECT *
-FROM entity_zids
-JOIN entities USING (entity_id)
-WHERE entity_type = 'CATEGORIE' AND entity_zid = ?
-EOQ
-		, dereference($group, 'departmentOfBranch'));
+			SELECT *
+			FROM entity_zids
+			JOIN entities USING (entity_id)
+			WHERE entity_type = 'CATEGORIE' AND entity_zid = ?
+			EOQ, dereference($group, 'departmentOfBranch'));
 		if (!$info) fatal("categorie ".dereference($group, 'departmentOfBranch')." of $entity_name not found");
 		$entity_id = db_get_entity_id($entity_name, $isMainGroup?'STAMKLAS':'LESGROEP');
-		db_exec("INSERT IGNORE INTO entity_zids ( entity_id, parent_entity_id, bos_id, sisy_id, entity_zid ) VALUES ( ?, ?, ?, ?, ? )", $entity_id, $info['entity_id'], $info['bos_id'], $info['sisy_id'], dereference($group, 'id'));
+		db_exec(<<<EOQ
+			INSERT IGNORE INTO entity_zids ( entity_id, parent_entity_id,
+				bos_id, sisy_id, entity_zid )
+			VALUES ( ?, ?, ?, ?, ? )
+			EOQ, $entity_id, $info['entity_id'], $info['bos_id'],
+			$info['sisy_id'], dereference($group, 'id'));
 	}
 }
 
@@ -342,17 +346,20 @@ function recapitalize_lesgroepen() {
 		//print_r($info);
 		//exit;
 		echo($info['entity_name']."\n");
-		db_exec('UPDATE entities SET entity_name = ? WHERE entity_id = ?', capitalize($info['entity_name'], 'LESGROEP'), $entity_id);
+		db_exec('UPDATE entities SET entity_name = ? WHERE entity_id = ?',
+			capitalize($info['entity_name'], 'LESGROEP'), $entity_id);
 	}
 }
 
 function update_rooms() {
-	//$sisy_id = db_get_id('sisy_id', 'sisys', 'sisy_zid', config('SISY'));
-	//$bos_zid = db_single_field('SELECT bos_zid FROM boss WHERE sisy_id = ?', $sisy_id);
-	$rooms = zportal_GET_data('locationofbranches', 'fields', 'id,name,branchOfSchool,secondaryBranches'); //, 'branch', $bos_zid, 'fields', 'id,name');
+	$rooms = zportal_GET_data('locationofbranches', 'fields',
+		'id,name,branchOfSchool,secondaryBranches');
+
 	foreach ($rooms as $room) {
 		if (count(dereference($room, 'secondaryBranches'))) {
-			if (count(dereference($room, 'secondaryBranches')) == 1 && dereference($room, 'secondaryBranches')[0] == dereference($room, 'branchOfSchool')) {
+			if (count(dereference($room, 'secondaryBranches')) == 1 &&
+				dereference($room, 'secondaryBranches')[0] ==
+					dereference($room, 'branchOfSchool')) {
 				// no problem
 			} else {
 				print_r($room);
@@ -363,8 +370,13 @@ function update_rooms() {
 			dereference($room, 'branchOfSchool'));
 		$sisy_id = db_single_field('SELECT sisy_id FROM boss WHERE bos_id = ?', $bos_id);
 		if (!$sisy_id) fatal("sisy_id of bos_id=$bos_id is false?!?!");
-		$entity_id = db_get_entity_id(capitalize(htmlenc(dereference($room, 'name')), 'LOKAAL'), 'LOKAAL');
-		db_exec("INSERT IGNORE INTO entity_zids ( entity_id, bos_id, sisy_id, entity_zid ) VALUES ( ?, ?, ?, ? )", $entity_id, $bos_id, $sisy_id, dereference($room, 'id'));
+		$entity_id = db_get_entity_id(capitalize(htmlenc(
+			dereference($room, 'name')), 'LOKAAL'), 'LOKAAL');
+		db_exec(<<<EOQ
+			INSERT IGNORE INTO entity_zids
+				( entity_id, bos_id, sisy_id, entity_zid )
+			VALUES ( ?, ?, ?, ? )"
+			EOQ, $entity_id, $bos_id, $sisy_id, dereference($room, 'id'));
 	}
 }
 
@@ -385,8 +397,12 @@ function get_access_info() {
 		$access_token = $_COOKIE['access_token'];
 
 		/* do we know this token? */
-		$access_info = db_single_row("SELECT * FROM access JOIN entities USING (entity_id) JOIN users USING (entity_id) WHERE access_token = ?",
-				$access_token);
+		$access_info = db_single_row(<<<EOQ
+			SELECT * FROM access
+			JOIN entities USING (entity_id)
+			JOIN users USING (entity_id)
+			WHERE access_token = ?
+			EOQ, $access_token);
 
 		if ($access_info === NULL) {
 			// we don't know this token (anymore), either the user
@@ -448,14 +464,25 @@ function update_weeks_of_sisy($sisy_id, $startYear) {
 			$dayofweek = strtotime("+$i days", $first);
 			$check = date('Ymd', $dayofweek);
 			$month = date('n', $dayofweek);
-			$vakantie = db_single_field("SELECT GROUP_CONCAT(holiday_name) FROM holidays WHERE sisy_id = ? AND holiday_start <= ? AND holiday_end >= ?", $sisy_id, $check, $check);
-			if ($vakantie || ($year == $startYear && $month < 8) || ($year != $startYear && $month > 7)) {
+			$vakantie = db_single_field(<<<EOQ
+				SELECT GROUP_CONCAT(holiday_name) FROM holidays
+				WHERE sisy_id = ? AND holiday_start <= ? AND holiday_end >= ?
+				EOQ, $sisy_id, $check, $check);
+			if ($vakantie || ($year == $startYear && $month < 8) ||
+					($year != $startYear && $month > 7)) {
 				$status[$i] = 0;
 			} else $status[$i] = 1;
 		}
-		$weken[] = array ( 'year' => $year, 'week' => date("W", $thursday), 'monday' => $first, 'ma' => $status[0], 'di' => $status[1], 'wo' => $status[2], 'do' => $status[3], 'vr' => $status[4]);
+		$weken[] = array (
+			'year' => $year, 'week' => date("W", $thursday), 'monday' => $first,
+			'ma' => $status[0], 'di' => $status[1], 'wo' => $status[2],
+			'do' => $status[3], 'vr' => $status[4]);
 		$week_id = db_get_id('week_id', 'weeks', 'year', $year, 'week', date("W", $thursday));
-		db_exec("UPDATE weeks SET sisy_id = ?, monday_timestamp = FROM_UNIXTIME(?), ma = ?, di = ?, wo = ?, do = ?, vr = ? WHERE week_id = ?", $sisy_id, $first, $status[0], $status[1], $status[2], $status[3], $status[4], $week_id);
+		db_exec(<<<EOQ
+			UPDATE weeks SET sisy_id = ?, monday_timestamp = FROM_UNIXTIME(?),
+				ma = ?, di = ?, wo = ?, do = ?, vr = ? WHERE week_id = ?
+			EOQ, $sisy_id, $first, $status[0], $status[1], $status[2],
+			$status[3], $status[4], $week_id);
 		$thursday = strtotime('+1 week', $thursday);
 	} while(1);
 }
@@ -468,9 +495,8 @@ function isodayname($day_number) {
 function update_portal_version() {
 	$version = zportal_get_json('status/version_name');
 	db_exec(<<<EOQ
-UPDATE config SET config_value = ? WHERE config_key = 'PORTAL'
-EOQ
-	, $version);
+		UPDATE config SET config_value = ? WHERE config_key = 'PORTAL'
+		EOQ, $version);
 }
 
 function generate_pairs($week_id, $rooster_version) {

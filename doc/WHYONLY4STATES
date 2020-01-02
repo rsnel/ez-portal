@@ -1,0 +1,39 @@
+// previously we stored the state (new, cancelled, normal) and valid (BOOL)
+// in two columns, but this can be condensed to one column in a sensible manner
+//
+// let's look at how those two columns looked (the IF column tells us that
+// it is about a hidden appointment that we did not know about)
+//
+// SELECT appointment_state, appointment_valid, IF(rooster_version IS NULL, 0, 1)
+// FROM log
+// GROUP BY appointment_state, appointment_valid, IF(rooster_version IS NULL, 0, 1)
+// gives
+//  appointment_state  appointment_valid  IF(rooster_version IS NULL, 0, 1)
+//               NULL               NULL                                  1
+//             normal                  0                                  0
+//             normal                  0                                  1
+//             normal                  1                                  1
+//          cancelled                  0                                  0
+//          cancelled                  1                                  1
+//                new                  0                                  0
+//                new                  1                                  1
+//
+// This means that normal appointments can be both valid and invalid
+// and that cancelled and new lessons only can be valid if they
+// are not hidden. All appointments turn to invalid, once they are hidden
+// So:
+// - the interesting states can be condensed to
+//   * new       (valid if unhidden, invalid if hidden)
+//   * cancelled (valid if unhidden, invalid if hidden)
+//   * normal    (valid if unhidden, invalid if hidden)
+//   * invalid   (always invalid)
+// - we can translate from the old to the new situation with
+//   UPDATE log
+//   SET appointment_state = 'invalid'
+//   WHERE appointment_valid = 0
+//   AND rooster_version IS NOT NULL
+// - once an appointment is hidden while we do not have 
+//   the original appointment, it is not readily apparant
+//   what its role was before it was hidden
+//   (replacee (invalid) or replacer (valid))
+
