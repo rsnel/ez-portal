@@ -33,7 +33,9 @@ $current_year = date('o', $offset);
 
 $weeks = db_all_assoc_rekey(<<<EOQ
 SELECT week_id, year, week, sisy_id, sisy_school, sisy_project,
-	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp, WKTM(week_last_sync) last_sync
+	UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp, WKTM(week_last_sync) last_sync,
+	studentCanViewOwnSchedule, studentCanViewProjectSchedules,
+	employeeCanViewOwnSchedule, employeeCanViewProjectSchedules
 FROM weeks
 JOIN (
 	SELECT DISTINCT week_id FROM roosters WHERE rooster_ok = 1
@@ -55,6 +57,19 @@ WHERE year > ? OR ( year = ? AND week >= ? )
 ORDER BY year, week
 EOQ
 , $current_year, $current_year, $current_week);
+
+if (!canViewProjectSchedules($access_info, $weeks[$default_week_id])) {
+	if (!canViewOwnSchedule($access_info, $weeks[$default_week_id])) {
+		$img = 'https://i.imgflip.com/3krczb.jpg';
+	} else {
+		$img = 'https://i.imgflip.com/3krbxe.jpg';
+	}
+	html_start($_SERVER['EZ_PORTAL_INSTITUTION']); ?>
+Je hebt onvoldoende rechten om iets zinnigs te zien op dit roosterbord :(
+<p><img src="<?=$img?>">
+<?php	html_end();
+	exit;
+}
 
 // if there is no week at this time, then take the newest week that does exist
 if (!$default_week_id) $default_week_id = array_key_last($weeks);
@@ -250,7 +265,7 @@ case 'STAMKLAS':
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
 	$type .= <<<EOT
-		<span class="unknown">door nog ontbrekende informatie worden
+		 <span class="unknown">door nog ontbrekende informatie worden
 		leerling- en groepsroosters mogelijk niet volledig weergegven</span>
 		EOT;
 	break;
@@ -258,7 +273,7 @@ case 'CATEGORIE':
 	$group_entity_ids = db_single_field(<<<EOQ
 		SELECT GROUP_CONCAT(entity_id)
 		FROM entity_zids WHERE sisy_id = ?
-		AND bos_id = ? AND parent_entity_id IN ( '.$entity_id.' )
+		AND bos_id = ? AND parent_entity_id IN ( $entity_id )
 		EOQ, $sisy_id, $bos_id);
 	$data = master_query($group_entity_ids, 'groups', $rooster_version,
 		$participations_version, $week_id);
@@ -437,7 +452,7 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <p>Vakken:
 <?php foreach ($res_vak as $entity_name) { echo(' '.make_link($entity_name, substr($entity_name, 1))); }; ?>
 <p>Categorie&euml;n:
-<?php foreach ($res_cat as $entity_name) { echo(' '.make_link($entity_name)); }; ?>
+<?php foreach ($res_cat as $entity_name) { echo(' '.make_link($entity_name)); }; ?><p>
 <?php
 } else {
 	?><p><?php

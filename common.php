@@ -1,5 +1,17 @@
 <?php
 
+function canViewProjectSchedules($access_info, $week) {
+	if ($access_info['isStudent'] && $week['studentCanViewProjectSchedules']) return 1;
+	else if ($access_info['isEmployee'] && $week['employeeCanViewProjectSchedules']) return 1;
+	else return 0;
+}
+
+function canViewOwnSchedule($access_info, $week) {
+	if ($access_info['isStudent'] && $week['studentCanViewOwnSchedule']) return 1;
+	else if ($access_info['isEmployee'] && $week['employeeCanViewOwnSchedule']) return 1;
+	else return 0;
+}
+
 $config_defaults = array(
 	'PORTAL' => '?',
 	'STRIP_CATEGORIE_OF_STAMKLAS' => 'true',
@@ -499,39 +511,27 @@ function update_portal_version() {
 
 function generate_pairs($week_id, $rooster_version) {
 	// delete all pairings that must be generated or that depend on those being generated
-	// do it in a specific order to satisfy the foreign key constraint on prev_pair_id
-	$do_delete = db_all_assoc(<<<EOQ
-		SELECT pair_id
-		FROM pairs WHERE week_id = ?
-		AND rooster_version >= ?
-		ORDER BY pair_id DESC
-		EOQ, $week_id, $rooster_version);
-
-	foreach ($do_delete as $pair_id) db_exec('DELETE FROM pairs WHERE pair_id = ?', $pair_id);
+	db_exec("DELETE FROM pairs WHERE rooster_version_created >= $rooster_version");
+	db_exec(<<<EOQ
+		UPDATE pairs SET rooster_version_deleted = 2147483647
+		WHERE rooster_version_deleted >= $rooster_version AND week_id = $week_id
+		EOQ);
 
 	$list = db_all_assoc(<<<EOQ
 		SELECT log_id id, appointment_id, appointment_instance_zid zid, appointment_state state 
 		FROM log
-		LEFT JOIN (
-		        SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
-		        FROM log
-		        WHERE rooster_version <= ?
-		) AS next_log USING ( log_id, week_id )
-		WHERE appointment_id IS NOT NULL AND obsolete IS NULL
-		AND rooster_version <= ? AND week_id = ?
+		WHERE appointment_id IS NOT NULL
+		AND rooster_version_created <= $rooster_version AND week_id = $week_id
+		AND rooster_version_deleted > $rooster_version
 		ORDER BY appointment_instance_zid, log_id
-		EOQ, $rooster_version, $rooster_version, $week_id);
+		EOQ);
 
         $pairs = db_all_assoc_rekey(<<<EOQ
 		SELECT log_id, appointment_id, pair_id
 		FROM pairs
-		LEFT JOIN (
-		        SELECT week_id, prev_pair_id pair_id, pair_id obsolete
-		        FROM pairs
-		        WHERE rooster_version <= ?
-		) AS next_pairs USING (pair_id, week_id)
-		WHERE obsolete IS NULL AND rooster_version <= ? AND week_id = ?
-		EOQ, $rooster_version, $rooster_version, $week_id);
+		WHERE rooster_version_created <= $rooster_version
+		AND rooster_version_deleted > $rooster_version AND week_id = $week_id
+		EOQ);
 
 	if (!count($list)) return;
 
@@ -544,13 +544,13 @@ function generate_pairs($week_id, $rooster_version) {
                                 unset($pairs[$b['id']]);
                                 unset($pairs[$a['id']]);
 				db_exec(<<<EOQ
-					INSERT INTO pairs ( week_id, rooster_version, log_id,
+					INSERT INTO pairs ( week_id, rooster_version_created, log_id,
 						paired_log_id, appointment_id )
 					VALUES ( ?, ?, ?, ?, ? )
 					EOQ, $week_id, $rooster_version, $b['id'], $a['id'],
 					$a['appointment_id']);
 				db_exec(<<<EOQ
-					INSERT INTO pairs ( week_id, rooster_version, log_id,
+					INSERT INTO pairs ( week_id, rooster_version_created, log_id,
 						paired_log_id, appointment_id )
 					VALUES ( ?, ?, ?, ?, ? )
 					EOQ, $week_id, $rooster_version, $a['id'], $b['id'],
@@ -560,17 +560,21 @@ function generate_pairs($week_id, $rooster_version) {
                         } else {
 				// soft-overwrite old pair
 				db_exec(<<<EOQ
-					INSERT INTO pairs ( prev_pair_id, week_id, rooster_version,
-						log_id, paired_log_id, appointment_id )
-					VALUES ( ?, ?, ?, ?, ?, ? )
-					EOQ, $pairs[$b['id']]['pair_id'], $week_id,
-					$rooster_version, $b['id'], $a['id'], $a['appointment_id']);
+					UPDATE pairs SET rooster_version_deleted = $rooster_version
+					WHERE pair_id = ? OR pair_id = ?
+					EOQ, $pairs[$b['id']]['pair_id'], $pairs[$a['id']]['pair_id']);
 				db_exec(<<<EOQ
-					INSERT INTO pairs ( prev_pair_id, week_id, rooster_version,
+					INSERT INTO pairs ( week_id, rooster_version_created,
 						log_id, paired_log_id, appointment_id )
-					VALUES ( ?, ?, ?, ?, ?, ? )
-					EOQ, $pairs[$a['id']]['pair_id'], $week_id,
-					$rooster_version, $a['id'], $b['id'], $b['appointment_id']);
+					VALUES ( ?, ?, ?, ?, ? )
+					EOQ, $week_id, $rooster_version, $b['id'], $a['id'],
+					$a['appointment_id']);
+				db_exec(<<<EOQ
+					INSERT INTO pairs ( week_id, rooster_version_created,
+						log_id, paired_log_id, appointment_id )
+					VALUES ( ?, ?, ?, ?, ? )
+					EOQ, $week_id, $rooster_version, $a['id'], $b['id'],
+					$b['appointment_id']);
                         }
                 }
                 $b = $a;
@@ -666,15 +670,10 @@ function master_query($entity_ids, $kind, $rooster_version, $participations_vers
 			JOIN (
 				SELECT week_id, appointment_instance_zid, students_egrp_id
 				FROM participations 
-				LEFT JOIN (
-					SELECT week_id, prev_participation_id AS participation_id,
-						participation_id AS obsolete
-					FROM participations
-					WHERE participations_version <= $participations_version
-				) AS next_participations USING (week_id, participation_id)
-				WHERE participations_version <= $participations_version
-				AND obsolete IS NULL
-			) AS valid_participations USING (week_id, appointment_instance_zid)
+				WHERE participations_version_created <= $participations_version
+				AND participations_version_deleted > $participations_version
+				AND week_id = $week_id
+			) AS valid_participations USING (appointment_instance_zid)
 			JOIN entities2egrps
 			ON entities2egrps.egrp_id = valid_participations.students_egrp_id\n
 			EOJ;
@@ -686,33 +685,26 @@ function master_query($entity_ids, $kind, $rooster_version, $participations_vers
 	} else fatal("impossible value of \$kind");
 
 	return db_query(<<<EOQ
-		SELECT f_l.log_id f_id, f_a.appointment_id f_aid, f_l.appointment_instance_zid zid,
-			f_a.appointment_day f_d, f_a.appointment_timeSlot f_u,
-			f_l.appointment_state f_s, f_a.groups f_groups, f_a.subjects f_subjects,
+		SELECT DISTINCT f_l.log_id f_id, f_a.appointment_id f_aid,
+			f_l.appointment_instance_zid zid, f_a.appointment_day f_d,
+			f_a.appointment_timeSlot f_u, f_l.appointment_state f_s,
+			f_a.groups f_groups, f_a.subjects f_subjects,
 			f_a.teachers f_teachers, f_a.locations f_locations,
 			pairs.paired_log_id s_id, s_a.appointment_id s_aid, s_a.appointment_day s_d,
 			s_a.appointment_timeSlot s_u, s_a.groups s_groups, s_a.subjects s_subjects,
 			s_a.teachers s_teachers, s_a.locations s_locations
 		FROM log AS f_l
-		LEFT JOIN (
-			SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
-			FROM log
-			WHERE rooster_version <= $rooster_version
-		) AS next_log USING (log_id, week_id)
 		JOIN appointments AS f_a USING (appointment_id)
 		{$join}LEFT JOIN (
-			SELECT week_id, log_id, paired_log_id, appointment_id FROM pairs
-			LEFT JOIN (
-				SELECT week_id, prev_pair_id AS pair_id, pair_id obsolete
-				FROM pairs
-				WHERE rooster_version <= $rooster_version
-			) AS next_pairs USING (pair_id, week_id)
-			WHERE rooster_version <= $rooster_version AND obsolete IS NULL
-		) AS pairs USING (log_id, week_id)
+			SELECT log_id, paired_log_id, appointment_id FROM pairs
+			WHERE rooster_version_created <= $rooster_version
+			AND rooster_version_deleted > $rooster_version
+			AND week_id = $week_id
+		) AS pairs USING (log_id)
 		LEFT JOIN appointments AS s_a ON s_a.appointment_id = pairs.appointment_id
-		WHERE obsolete IS NULL AND f_l.week_id = $week_id
-		AND f_l.rooster_version <= $rooster_version$where
+		WHERE f_l.week_id = $week_id AND f_l.rooster_version_created <= $rooster_version$where
 		AND f_a.appointment_timeSlot > 0
+		AND f_l.rooster_version_deleted > $rooster_version
 		ORDER BY f_u, f_d,
 		CASE f_s WHEN 'cancelled' THEN 0
 			WHEN 'invalid' THEN 1 WHEN 'normal' THEN 2 WHEN 'new' THEN 3 END
@@ -723,29 +715,21 @@ function lln_query($entity_ids, $rooster_version, $participations_version, $week
 	return db_single_field(<<<EOQ
 		SELECT GROUP_CONCAT(DISTINCT log2students.entity_id)
 		FROM log
-		LEFT JOIN (
-			SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
-			FROM log
-			WHERE rooster_version <= $rooster_version
-		) AS next_log USING (log_id, week_id)
 		JOIN appointments USING (appointment_id)
 		JOIN entities2egrps AS appointments2groups
 		ON appointments2groups.egrp_id = appointments.groups_egrp_id
 		JOIN (
-			SELECT week_id, appointment_instance_zid, students_egrp_id
+			SELECT appointment_instance_zid, students_egrp_id
 			FROM participations 
-			LEFT JOIN (
-				SELECT week_id, prev_participation_id AS participation_id,
-					participation_id AS obsolete
-				FROM participations
-				WHERE participations_version <= $participants_version
-			) AS next_participations USING (week_id, participation_id)
-			WHERE participations_version <= $participants_version AND obsolete IS NULL
-		) AS valid_participations USING (week_id, appointment_instance_zid)
+			WHERE participations_version_created <= $participations_version
+			AND participations_version_deleted > $participations_version
+			AND week_id = $week_id
+		) AS valid_participations USING (appointment_instance_zid)
 		JOIN entities2egrps AS log2students
 		ON log2students.egrp_id = valid_participations.students_egrp_id
 		WHERE appointments2groups.entity_id IN ( $entity_ids )
-		AND rooster_version <= $rooster_version AND week_id = $week_id
+		AND rooster_version_deleted > $rooster_version
+		AND rooster_version_created <= $rooster_version AND week_id = $week_id
 		EOQ);
 }
 
@@ -759,7 +743,7 @@ function check_doubles() {
 		EOQ);
 
 	if (count($doubles) > 0) {
-		echo("warming, some names appear double in entities list, see here:\n");
+		echo("warning, some names appear double in entities list, see here:\n");
 		print_r($doubles);
 	}
 }
@@ -857,9 +841,14 @@ function db_get_text_id($text) {
 function db_get_egrp_id($entities, $search_func) {
 	$egrp_id = db_get_id('egrp_id', 'egrps', 'egrp', $entities);
 
-	if ($entities) foreach (array_map($search_func, explode(',', $entities)) as $entity_id)
+	$count = 0;
+	if ($entities) foreach (array_map($search_func, explode(',', $entities)) as $entity_id) {
+		$count++;
 		db_exec('INSERT IGNORE INTO entities2egrps ( entity_id, egrp_id ) VALUES ( ?, ? )',
                         $entity_id, $egrp_id);
+	}
+
+	db_exec('UPDATE egrps SET egrp_count = ? WHERE egrp_id = ?', $count, $egrp_id);
 
 	return $egrp_id;
 }
@@ -952,12 +941,12 @@ function update_appointments_in_week($week) {
 			"rooster_version ($rooster_version)");
 		// all roosters after the bad one must be removed in reverse (log_id DESC)
 		// order, and an update must be started from the last good version
-		// this can happen if the update is interrupted (but only the last version
+		// this can happen if the update is interrupted (but then only the last version
 		// will be not ok)
 	}
 
 	$highest_version_in_log = db_single_field(
-		'SELECT MAX(rooster_version) FROM log WHERE week_id = ?', $week['week_id']);
+		'SELECT MAX(rooster_version_created) FROM log WHERE week_id = ?', $week['week_id']);
 
 	if ($highest_version_in_log > $rooster_version) {
 		fatal("found log records with version $highest_version_in_log, ".
@@ -989,7 +978,7 @@ function update_appointments_in_week($week) {
 	}
 
 	$highest_version_in_participations = db_single_field(
-		'SELECT MAX(participations_version) FROM participations WHERE week_id = ?',
+		'SELECT MAX(participations_version_created) FROM participations WHERE week_id = ?',
 		$week['week_id']);
 
 	if ($highest_version_in_participations > $participations_version) {
@@ -1023,7 +1012,8 @@ function update_appointments_in_week($week) {
 
 	// merge appointments in week starts with the current $rooster_version
 	// rooster_version and rooster_id are passed by reference!
-	merge_appointments_in_week($json, $rooster_version, $week['week_id'], $rooster_id, $participations_version, $pversion_id);
+	merge_appointments_in_week($json, $rooster_version, $week['week_id'],
+		$rooster_id, $participations_version, $pversion_id);
 
 	$schedule_open = schedule_open($rooster_id);
 	$participations_open = participations_open($pversion_id);
@@ -1193,27 +1183,22 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 
 	/* first handle the appointment */
 	$zid = dereference($a, 'id');
-	$instance_zid = dereference($a, 'appointmentInstance');
-	$appointment_lastModified = dereference($a, 'appointmentLastModified');
 	$hidden = dereference($a, 'hidden');
 
 	// let's see if we already have this appointment
 	$old_appointment = db_single_row(<<<EOQ
-		SELECT log_id, rooster_version, appointment_id, appointment_instance_zid,
+		SELECT log_id, rooster_version_created, appointment_id, appointment_instance_zid,
 			appointment_zid, appointment_state,
 			UNIX_TIMESTAMP(appointment_created) appointment_created,
 			UNIX_TIMESTAMP(appointment_lastModified) appointment_lastModified
 		FROM log
-		LEFT JOIN (
-			SELECT week_id, prev_log_id AS log_id, log_id AS obsolete
-			FROM log
-			WHERE rooster_version <= $rooster_version
-		) next_log USING (log_id, week_id)
-		WHERE week_id = $week_id AND rooster_version <= $rooster_version
-		AND appointment_zid = ? AND obsolete IS NULL
+		WHERE week_id = $week_id AND rooster_version_created <= $rooster_version
+		AND rooster_version_deleted > $rooster_version AND appointment_zid = ?
 		EOQ, $zid);
 
 	if (!$hidden) {
+		$instance_zid = dereference($a, 'appointmentInstance');
+		$appointment_lastModified = dereference($a, 'appointmentLastModified');
 		$appointment_id = get_appointment_id($a);
 		$created = dereference($a, 'created');
 		$valid = dereference($a, 'valid');
@@ -1239,34 +1224,38 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 			/* now we must write something to the new version of the schedule */
 			open_new_schedule_version_if_needed($week_id, $rooster_id, $rooster_version);
 
+			if ($prev_log_id) db_exec(<<<EOQ
+				UPDATE log SET rooster_version_deleted = $rooster_version
+				WHERE log_id = $prev_log_id
+				EOQ);
+
 			db_exec(<<<EOQ
-				INSERT INTO log ( prev_log_id, week_id, rooster_version, appointment_id,
+				INSERT INTO log ( week_id, rooster_version_created, appointment_id,
 					appointment_zid, appointment_instance_zid, appointment_state,
 					appointment_created, appointment_lastModified )
-				VALUES ( ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?) )
-				EOQ, $prev_log_id, $week_id, $rooster_version, $appointment_id, $zid,
+				VALUES ( ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?) )
+				EOQ, $week_id, $rooster_version, $appointment_id, $zid,
 				$instance_zid, $state, $created, $appointment_lastModified);
-		} else {
-			echo("no change in appointment, do nothing, maybe some participations later\n");
 		}
+		//else {
+		//	echo("no change in appointment, do nothing, maybe some participations later\n");
+		//}
 	} else if ($old_appointment) {
 		// we must hide an appointment, we do that like this
 		open_new_schedule_version_if_needed($week_id, $rooster_id, $rooster_version);
 
-		// does lastModified change when appointment is hidden?
-		db_exec(<<<EOQ
-			INSERT INTO log ( prev_log_id, week_id,
-				rooster_version, appointment_lastModified )
-			VALUES ( ?, ?, ?, FROM_UNIXTIME(?) )
-			EOQ, $old_appointment['log_id'], $week_id, $rooster_version,
-			$appointment_lastModified);
+		if ($prev_log_id) db_exec(<<<EOQ
+			UPDATE log SET rooster_version_deleted = $rooster_version
+			WHERE log_id = {$old_appointment['log_id']}
+			EOQ);
+
 	} 
 
 	db_exec(<<<EOQ
 		UPDATE roosters
 		SET rooster_lastModified = FROM_UNIXTIME(?)
-		WHERE rooster_id = ? AND rooster_lastModified < FROM_UNIXTIME(?)
-		EOQ, $appointment_lastModified, $rooster_id, $appointment_lastModified);
+		WHERE rooster_id = $rooster_id AND rooster_lastModified < FROM_UNIXTIME(?)
+		EOQ, $appointment_lastModified, $appointment_lastModified);
 
 	// we don't care about hidden appointments after this
 	if ($hidden) return;
@@ -1279,19 +1268,15 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 
 	// do we already have participation data?
 	$old_participation = db_single_row(<<<EOQ
-		SELECT participation_id, participations_version, students_egrp_id
+		SELECT participation_id, participations_version_created, students_egrp_id
 		FROM participations
-		LEFT JOIN (
-			SELECT appointment_instance_zid, prev_participation_id AS participation_id,
-				participation_id AS obsolete
-			FROM participations
-			WHERE participations_version <= ?
-		) AS next_participations USING (appointment_instance_zid, participation_id)
-		WHERE appointment_instance_zid = ? AND participations_version <= ? AND obsolete IS NULL
-		EOQ, $participations_version, $instance_zid, $participations_version);
+		WHERE appointment_instance_zid = ?
+		AND participations_version_created <= $participations_version
+		AND participations_version_deleted > $participations_version
+		EOQ, $instance_zid);
 	
 	if ($old_participation) {
-		if (participations_open($pversion_id) && $old_participation['participations_version'] == $participations_version) {
+		if (participations_open($pversion_id) && $old_participation['participations_version_created'] == $participations_version) {
 			if ($students_egrp_id != $old_participation['students_egrp_id'])
 				fatal("weird?!?! participation in same instance_zid is different ".
 					"in same run");
@@ -1300,12 +1285,16 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 			open_new_participations_version_if_needed($week_id,
 				$pversion_id, $participations_version);
 			db_exec(<<<EOQ
-				INSERT INTO participations ( prev_participation_id, week_id,
-					participation_lastModified, participations_version,
+				UPDATE participations
+				SET participations_version_deleted = $participations_version
+				WHERE participation_id = {$old_participation['participation_id']}
+				EOQ);
+			db_exec(<<<EOQ
+				INSERT INTO participations ( week_id, participation_lastModified,
+					participations_version_created,
 					appointment_instance_zid, students_egrp_id )
-				VALUES ( ?, ?, FROM_UNIXTIME(?), ?, ?, ? )
-				EOQ, $old_participation['participation_id'], $week_id,
-				$participation_lastModified, $participations_version,
+				VALUES ( ?, FROM_UNIXTIME(?), ?, ?, ? )
+				EOQ, $week_id, $participation_lastModified, $participations_version,
 				$instance_zid, $students_egrp_id);
 		} // participation data didn't change, do nothing
 	} else {
@@ -1314,11 +1303,11 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 		open_new_participations_version_if_needed($week_id,
 			$pversion_id, $participations_version);
 		db_exec(<<<EOQ
-			INSERT INTO participations ( prev_participation_id, week_id,
-				participation_lastModified, participations_version,
-				appointment_instance_zid, students_egrp_id )
-			VALUES ( ?, ?, FROM_UNIXTIME(?), ?, ?, ? )
-			EOQ, NULL, $week_id, $participation_lastModified, $participations_version,
+			INSERT INTO participations ( week_id, participation_lastModified,
+				participations_version_created, appointment_instance_zid,
+				students_egrp_id )
+			VALUES ( ?, FROM_UNIXTIME(?), ?, ?, ? )
+			EOQ, $week_id, $participation_lastModified, $participations_version,
 			$instance_zid, $students_egrp_id);
 	}
 
@@ -1334,18 +1323,193 @@ function get_rooster_type($week_id, $rooster_version) {
 	$bool = db_single_field(<<<EOQ
 		SELECT BIT_OR(appointment_state != 'normal')
 		FROM log
-		LEFT JOIN (
-			SELECT prev_log_id AS log_id, log_id AS obsolete
-			FROM log
-			WHERE week_id = ? AND rooster_version <= ?
-		) next_log USING (log_id)
-		WHERE week_id = ? AND rooster_version <= ? AND obsolete IS NULL
-		EOQ, $week_id, $rooster_version, $week_id, $rooster_version);
+		WHERE week_id = ? AND rooster_version_created <= ? AND rooster_version_deleted > ?
+		EOQ, $week_id, $rooster_version, $week_id, $rooster_version, $rooster_version);
 	if ($bool) return 'week';
 	else return 'basis';
 }
 
 function html_print_r($array) {
 	?><pre><?php print_r($array); ?></pre><?php
+}
+
+function mk_grpest($week_id, $pversion_id, $sisy_id) {
+	$week_info = db_single_row('SELECT * FROM weeks WHERE week_id = ? AND sisy_id = ?',
+		$week_id, $sisy_id);
+	if (!$week_info) fatal("week with week_id=$week_id not found in project with sisy_id=$sisy_id");
+	$pversion_info = db_single_row(<<<EOQ
+		SELECT week_id, COUNT(pversion_id) participations_version, BIT_AND(pversion_ok) ok
+		FROM pversions
+		JOIN weeks USING (week_id)
+		WHERE sisy_id = ?
+		AND week_id = ( SELECT week_id FROM pversions WHERE pversion_id = ? )
+		EOQ, $sisy_id, $pversion_id);
+	if (!$pversion_info['week_id'] || !$pversion_info['ok'])
+		fatal("something wrong with pversion_id=$pversion_id");
+
+	print_r($week_info);
+	print_r($pversion_info);
+
+	$estgrps_id = db_get_id_new('estgrp_id', 'estgrps',
+		'week_id = ?', $week_id,
+		'estgrps_status = NULL', NULL,
+		'pversion_id = ?', $pversion_id);
+
+	echo("estgrps_id=$estgrps_id\n");
+	db_exec("DELETE FROM estgrp2ppl");
+	db_exec("DELETE FROM estgrp2grp");
+
+	$source_week_id = $pversion_info['week_id'];
+	$participations_version = $pversion_info['participations_version'];
+	echo("source: week_id = $source_week_id, participations_version = $participations_version\n");
+
+	$boss_infos = db_all_assoc_rekey(<<<EOQ
+		SELECT * FROM boss
+		JOIN sisys USING (sisy_id)
+		WHERE sisy_id = ?
+		EOQ, $sisy_id);
+
+	if (count($boss_infos) == 0) fatal("geen branchofschool gevonden in sisy_id=$sisy_id\n");
+
+	foreach ($boss_infos as $boss) {
+		echo("estimiating groups in:\n");
+		print_r($boss);
+		mk_grpest_in_boss($estgrps_id, $source_week_id,
+			$participations_version, $boss['bos_id'], $sisy_id);
+
+	}
+}
+
+function mk_grpest_in_boss($estgrps_id, $week_id, $participations_version, $bos_id, $sisy_id) {
+	echo("estgrp_id=$estgrps_id, week_id=$week_id, ".
+		"participations_version=$participations_version, bos_id=$bos_id, sisy_id=$sisy_id\n");
+
+	$groups = db_all_assoc_rekey(<<<EOQ
+		SELECT entities.entity_id, entities.entity_name,
+			entities.entity_type, parent_entity_id,
+			categories.entity_name categorie_name
+		FROM entity_zids
+		JOIN entities USING (entity_id)
+		JOIN entities AS categories ON categories.entity_id = parent_entity_id
+		WHERE sisy_id = ? AND bos_id = ?
+		AND ( entities.entity_type = 'STAMKLAS' OR entities.entity_type = 'LESGROEP' )
+		AND entities.entity_visible = 1
+		EOQ, $sisy_id, $bos_id);
+
+	$students = array();
+	$students2category = array();
+	foreach ($groups as $entity_id => $entity_info) {
+		echo("researching {$entity_info['entity_name']}\n");
+		//$students[$entity_id]
+		$info = db_single_row(<<<EOQ
+			SELECT groups2egrps.entity_id, GROUP_CONCAT(DISTINCT student.entity_name
+				ORDER BY student.entity_name) AS lln, egrp_count,
+				groups.egrp, groups.egrp_id
+			FROM participations
+			JOIN log USING (week_id, appointment_instance_zid)
+			JOIN appointments USING (appointment_id)
+			JOIN egrps AS groups ON groups.egrp_id = groups_egrp_id
+			JOIN entities2egrps AS groups2egrps USING (egrp_id)
+			JOIN entities2egrps AS students ON students.egrp_id = students_egrp_id
+			JOIN entities AS student ON student.entity_id = students.entity_id
+			WHERE week_id = $week_id AND bos_id = $bos_id
+			AND participations_version_created <= $participations_version
+			AND participations_version_deleted > $participations_version
+			AND groups2egrps.entity_id = $entity_id AND egrp_count >= 1
+			GROUP BY groups.egrp_id
+			EOQ);
+
+		if (!$info) continue;
+
+		$students[$entity_id] = $info;
+
+		$categories = db_single_field(<<<EOQ
+			SELECT GROUP_CONCAT(DISTINCT entity_name)
+			FROM egrps
+			JOIN entities2egrps USING (egrp_id)
+			JOIN entity_zids USING (entity_id)
+			JOIN entities ON entities.entity_id = entity_zids.parent_entity_id
+			WHERE egrp_id = {$info['egrp_id']} AND bos_id = ? AND sisy_id = ?
+			EOQ, $bos_id, $sisy_id);
+
+		if ($categories == '') continue;
+
+		$categories = explode(',', $categories);
+		if (count($categories) > 1) continue;
+		$category = $categories[0];
+
+		if (!$info['lln']) continue;
+
+		if ($entity_info['entity_type'] == 'STAMKLAS') $addition = 10;
+		else $addition = 1;
+
+		foreach (explode(',', $info['lln']) as $ll) {
+			if (isset($students2category[$ll])) {
+				if (!isset($students2category[$ll][$category])) {
+					$students2category[$ll][$category] = $addition;
+				} else $students2category[$ll][$category] += $addition;
+			} else {
+				$students2category[$ll] = array();
+				$students2category[$ll][$category] = $addition;
+			}
+		}
+	}
+
+	foreach ($students2category as $student => $categories) {
+		$keys = array_keys($categories);
+		if (count($keys) == 1) $students2category[$student] = $keys[0];
+		else {
+			$max = max($categories);
+			$students2category[$student] = array_search($max, $categories);
+		}
+	}
+
+	//print_r($students2category);
+	// first: do all the simple cases
+	foreach ($students as $entity_id => $info) {
+		if ($info['egrp_count'] > 1) continue;
+		echo("group {$info['egrp']} success in first round\n");
+		$egrp_id = db_get_egrp_id($info['lln'], 'search_on_name');
+		db_exec(<<<EOQ
+			INSERT INTO estgrp2ppl ( estgrps_id, entity_id, egrp_id )
+			VALUES ( $estgrps_id, $entity_id, $egrp_id )
+			EOQ);
+		unset($students[$entity_id]);
+	}
+
+	echo("resterend\n");
+
+	foreach ($students as $entity_id => $info) {
+		// put students in all groups corresponding with their category
+		//echo("entity_id=$entity_id\n");
+		//print_r($info);
+		//print_r($groups[$entity_id]);
+		if (!$info['lln']) continue;
+		$students = array();
+		foreach (explode(',', $info['lln']) as $ll) {
+			if ($students2category[$ll] == $groups[$entity_id]['categorie_name']) {
+				$students[] = $ll;
+			}
+		}
+		$students = implode(',', functionalsort($students));
+		$egrp_id = db_get_egrp_id($students, 'search_on_name');
+		db_exec(<<<EOQ
+			INSERT INTO estgrp2ppl ( estgrps_id, entity_id, egrp_id )
+			VALUES ( $estgrps_id, $entity_id, $egrp_id )
+			EOQ);
+
+	}
+
+	db_exec(<<<EOQ
+		INSERT INTO estgrp2grp ( estgrps_id, group0_entity_id, group1_entity_id )
+		SELECT DISTINCT $estgrps_id, estgrp2ppl.entity_id, estppl2grp.entity_id
+		FROM estgrp2ppl
+		JOIN entities2egrps USING (egrp_id)
+		JOIN entities2egrps AS egrps2entities
+		ON egrps2entities.entity_id = entities2egrps.entity_id
+		JOIN estgrp2ppl AS estppl2grp
+		ON estppl2grp.estgrps_id = 40 AND estppl2grp.egrp_id = egrps2entities.egrp_id
+		WHERE estgrp2ppl.estgrps_id = 40
+		EOQ);
 }
 ?>

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jan 02, 2020 at 11:08 AM
+-- Generation Time: Jan 03, 2020 at 08:29 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -17,7 +17,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `ez-portal_ovc-dev`
+-- Database: `ez-portal_ovc-prod`
 --
 
 DELIMITER $$
@@ -102,7 +102,8 @@ CREATE TABLE `config` (
 
 CREATE TABLE `egrps` (
   `egrp_id` int(11) NOT NULL,
-  `egrp` text COLLATE utf8mb4_unicode_ci NOT NULL
+  `egrp` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `egrp_count` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -148,6 +149,61 @@ CREATE TABLE `entity_zids` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `errorlog`
+--
+
+CREATE TABLE `errorlog` (
+  `errorlog_id` int(11) NOT NULL,
+  `error` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `script` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `api` int(11) NOT NULL,
+  `token` int(11) DEFAULT NULL,
+  `timestamp` int(11) NOT NULL DEFAULT current_timestamp(),
+  `host` text COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `estgrp2grp`
+--
+
+CREATE TABLE `estgrp2grp` (
+  `estgrp2grp_id` int(11) NOT NULL,
+  `estgrps_id` int(11) NOT NULL,
+  `group0_entity_id` int(11) NOT NULL,
+  `group1_entity_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `estgrp2ppl`
+--
+
+CREATE TABLE `estgrp2ppl` (
+  `estgrp2ppl_id` int(11) NOT NULL,
+  `estgrps_id` int(11) NOT NULL,
+  `entity_id` int(11) NOT NULL,
+  `egrp_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `estgrps`
+--
+
+CREATE TABLE `estgrps` (
+  `estgrp_id` int(11) NOT NULL,
+  `estgrps_status` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `week_id` int(11) NOT NULL,
+  `pversion_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `holidays`
 --
 
@@ -159,6 +215,85 @@ CREATE TABLE `holidays` (
   `holiday_start` date NOT NULL,
   `holiday_end` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `locking`
+--
+
+CREATE TABLE `locking` (
+  `locking_id` enum('appointments') COLLATE utf8_unicode_ci NOT NULL,
+  `locking_pid` int(11) DEFAULT NULL,
+  `locking_status` text COLLATE utf8_unicode_ci DEFAULT NULL,
+  `locking_last_timestamp` timestamp(6) NULL DEFAULT current_timestamp(6)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `log`
+--
+
+CREATE TABLE `log` (
+  `log_id` int(11) NOT NULL,
+  `log_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `week_id` int(11) NOT NULL,
+  `rooster_version_created` int(11) NOT NULL,
+  `rooster_version_deleted` int(11) DEFAULT NULL,
+  `appointment_id` int(11) DEFAULT NULL,
+  `appointment_zid` int(11) DEFAULT NULL,
+  `appointment_instance_zid` int(11) DEFAULT NULL,
+  `appointment_state` set('normal','cancelled','new','invalid') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `appointment_created` timestamp NULL DEFAULT NULL,
+  `appointment_lastModified` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `pairs`
+--
+
+CREATE TABLE `pairs` (
+  `pair_id` int(11) NOT NULL,
+  `week_id` int(11) NOT NULL,
+  `rooster_version_created` int(11) NOT NULL,
+  `rooster_version_deleted` int(11) NOT NULL DEFAULT 2147483647,
+  `log_id` int(11) NOT NULL,
+  `paired_log_id` int(11) NOT NULL,
+  `appointment_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `participations`
+--
+
+CREATE TABLE `participations` (
+  `participation_id` int(11) NOT NULL,
+  `participation_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `week_id` int(11) NOT NULL,
+  `participation_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `participations_version_created` int(11) NOT NULL,
+  `participations_version_deleted` int(11) NOT NULL DEFAULT 2147483647,
+  `appointment_instance_zid` int(11) NOT NULL,
+  `students_egrp_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `pversions`
+--
+
+CREATE TABLE `pversions` (
+  `pversion_id` int(11) NOT NULL,
+  `week_id` int(11) NOT NULL,
+  `pversion_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `pversion_ok` int(11) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
 
@@ -325,12 +460,88 @@ ALTER TABLE `entity_zids`
   ADD KEY `entity_id` (`entity_id`) USING BTREE;
 
 --
+-- Indexes for table `errorlog`
+--
+ALTER TABLE `errorlog`
+  ADD PRIMARY KEY (`errorlog_id`);
+
+--
+-- Indexes for table `estgrp2grp`
+--
+ALTER TABLE `estgrp2grp`
+  ADD PRIMARY KEY (`estgrp2grp_id`),
+  ADD UNIQUE KEY `estgrps_id` (`estgrps_id`,`group0_entity_id`,`group1_entity_id`),
+  ADD KEY `group0_entity_id` (`group0_entity_id`),
+  ADD KEY `group1_entity_id` (`group1_entity_id`);
+
+--
+-- Indexes for table `estgrp2ppl`
+--
+ALTER TABLE `estgrp2ppl`
+  ADD PRIMARY KEY (`estgrp2ppl_id`),
+  ADD UNIQUE KEY `estgrps_id` (`estgrps_id`,`entity_id`,`egrp_id`),
+  ADD KEY `entity_id` (`entity_id`),
+  ADD KEY `students_egrp_id` (`egrp_id`);
+
+--
+-- Indexes for table `estgrps`
+--
+ALTER TABLE `estgrps`
+  ADD PRIMARY KEY (`estgrp_id`),
+  ADD UNIQUE KEY `week_id` (`week_id`),
+  ADD KEY `pversion_id` (`pversion_id`);
+
+--
 -- Indexes for table `holidays`
 --
 ALTER TABLE `holidays`
   ADD PRIMARY KEY (`holiday_id`),
   ADD UNIQUE KEY `holiday_zid` (`holiday_zid`),
   ADD KEY `sisy_id` (`sisy_id`);
+
+--
+-- Indexes for table `locking`
+--
+ALTER TABLE `locking`
+  ADD PRIMARY KEY (`locking_id`);
+
+--
+-- Indexes for table `log`
+--
+ALTER TABLE `log`
+  ADD PRIMARY KEY (`log_id`),
+  ADD KEY `appointment_id` (`appointment_id`),
+  ADD KEY `appointment_instance_zid` (`appointment_instance_zid`),
+  ADD KEY `week_id` (`week_id`) USING BTREE,
+  ADD KEY `week_id_2` (`week_id`,`rooster_version_created`,`rooster_version_deleted`);
+
+--
+-- Indexes for table `pairs`
+--
+ALTER TABLE `pairs`
+  ADD PRIMARY KEY (`pair_id`),
+  ADD KEY `log_id` (`log_id`),
+  ADD KEY `appointment_id` (`appointment_id`),
+  ADD KEY `paired_log_id` (`paired_log_id`),
+  ADD KEY `week_id_2` (`week_id`),
+  ADD KEY `week_id` (`week_id`,`rooster_version_created`,`rooster_version_deleted`);
+
+--
+-- Indexes for table `participations`
+--
+ALTER TABLE `participations`
+  ADD PRIMARY KEY (`participation_id`),
+  ADD KEY `students_egrp_id` (`students_egrp_id`),
+  ADD KEY `participations_ibfk_3` (`appointment_instance_zid`),
+  ADD KEY `week_id_2` (`week_id`),
+  ADD KEY `week_id` (`week_id`,`participations_version_created`,`participations_version_deleted`);
+
+--
+-- Indexes for table `pversions`
+--
+ALTER TABLE `pversions`
+  ADD PRIMARY KEY (`pversion_id`),
+  ADD KEY `week_id` (`week_id`);
 
 --
 -- Indexes for table `roosters`
@@ -413,10 +624,50 @@ ALTER TABLE `entities2egrps`
 ALTER TABLE `entity_zids`
   MODIFY `entitiy_zid_id` int(11) NOT NULL AUTO_INCREMENT;
 --
+-- AUTO_INCREMENT for table `errorlog`
+--
+ALTER TABLE `errorlog`
+  MODIFY `errorlog_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `estgrp2grp`
+--
+ALTER TABLE `estgrp2grp`
+  MODIFY `estgrp2grp_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `estgrp2ppl`
+--
+ALTER TABLE `estgrp2ppl`
+  MODIFY `estgrp2ppl_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `estgrps`
+--
+ALTER TABLE `estgrps`
+  MODIFY `estgrp_id` int(11) NOT NULL AUTO_INCREMENT;
+--
 -- AUTO_INCREMENT for table `holidays`
 --
 ALTER TABLE `holidays`
   MODIFY `holiday_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `log`
+--
+ALTER TABLE `log`
+  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `pairs`
+--
+ALTER TABLE `pairs`
+  MODIFY `pair_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `participations`
+--
+ALTER TABLE `participations`
+  MODIFY `participation_id` int(11) NOT NULL AUTO_INCREMENT;
+--
+-- AUTO_INCREMENT for table `pversions`
+--
+ALTER TABLE `pversions`
+  MODIFY `pversion_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `roosters`
 --
@@ -481,10 +732,56 @@ ALTER TABLE `entity_zids`
   ADD CONSTRAINT `entity_zids_ibfk_4` FOREIGN KEY (`sisy_id`) REFERENCES `sisys` (`sisy_id`);
 
 --
+-- Constraints for table `estgrp2grp`
+--
+ALTER TABLE `estgrp2grp`
+  ADD CONSTRAINT `estgrp2grp_ibfk_1` FOREIGN KEY (`estgrps_id`) REFERENCES `estgrps` (`estgrp_id`),
+  ADD CONSTRAINT `estgrp2grp_ibfk_2` FOREIGN KEY (`group0_entity_id`) REFERENCES `entities` (`entity_id`),
+  ADD CONSTRAINT `estgrp2grp_ibfk_3` FOREIGN KEY (`group1_entity_id`) REFERENCES `entities` (`entity_id`);
+
+--
+-- Constraints for table `estgrp2ppl`
+--
+ALTER TABLE `estgrp2ppl`
+  ADD CONSTRAINT `estgrp2ppl_ibfk_1` FOREIGN KEY (`estgrps_id`) REFERENCES `estgrps` (`estgrp_id`),
+  ADD CONSTRAINT `estgrp2ppl_ibfk_2` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`entity_id`),
+  ADD CONSTRAINT `estgrp2ppl_ibfk_3` FOREIGN KEY (`egrp_id`) REFERENCES `egrps` (`egrp_id`);
+
+--
+-- Constraints for table `estgrps`
+--
+ALTER TABLE `estgrps`
+  ADD CONSTRAINT `estgrps_ibfk_1` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`),
+  ADD CONSTRAINT `estgrps_ibfk_2` FOREIGN KEY (`pversion_id`) REFERENCES `pversions` (`pversion_id`);
+
+--
 -- Constraints for table `holidays`
 --
 ALTER TABLE `holidays`
   ADD CONSTRAINT `holidays_ibfk_1` FOREIGN KEY (`sisy_id`) REFERENCES `sisys` (`sisy_id`);
+
+--
+-- Constraints for table `log`
+--
+ALTER TABLE `log`
+  ADD CONSTRAINT `log_ibfk_2` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`appointment_id`),
+  ADD CONSTRAINT `log_ibfk_4` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`);
+
+--
+-- Constraints for table `pairs`
+--
+ALTER TABLE `pairs`
+  ADD CONSTRAINT `pairs_ibfk_1` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`),
+  ADD CONSTRAINT `pairs_ibfk_5` FOREIGN KEY (`log_id`) REFERENCES `log` (`log_id`),
+  ADD CONSTRAINT `pairs_ibfk_6` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`appointment_id`),
+  ADD CONSTRAINT `pairs_ibfk_7` FOREIGN KEY (`paired_log_id`) REFERENCES `log` (`log_id`);
+
+--
+-- Constraints for table `participations`
+--
+ALTER TABLE `participations`
+  ADD CONSTRAINT `participations_ibfk_4` FOREIGN KEY (`students_egrp_id`) REFERENCES `egrps` (`egrp_id`),
+  ADD CONSTRAINT `participations_ibfk_5` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`);
 
 --
 -- Constraints for table `roosters`

@@ -11,3 +11,5 @@
 Brian eigen: https://imgflip.com/i/3krbxe https://i.imgflip.com/3krbxe.jpg
 Brian niet: https://imgflip.com/i/3krczb https://i.imgflip.com/3krczb.jpg
 
+Patrick: https://imgflip.com/i/3l2seh https://i.imgflip.com/3l2seh.jpgh
+
