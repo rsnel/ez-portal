@@ -511,7 +511,11 @@ function update_portal_version() {
 
 function generate_pairs($week_id, $rooster_version) {
 	// delete all pairings that must be generated or that depend on those being generated
-	db_exec("DELETE FROM pairs WHERE rooster_version_created >= $rooster_version");
+	db_exec(<<<EOQ
+		DELETE FROM pairs
+		WHERE rooster_version_created >= $rooster_version
+		AND week_id = $week_id
+		EOQ);
 	db_exec(<<<EOQ
 		UPDATE pairs SET rooster_version_deleted = 2147483647
 		WHERE rooster_version_deleted >= $rooster_version AND week_id = $week_id

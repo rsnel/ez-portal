@@ -58,6 +58,13 @@ ORDER BY year, week
 EOQ
 , $current_year, $current_year, $current_week);
 
+// if there is no week at this time, then take the newest week that does exist
+if (!$default_week_id) $default_week_id = array_key_last($weeks);
+$default_week_info = $weeks[$default_week_id];
+$default_week = $default_week_info['week'];
+
+if (!isset($_GET['wk'])) $_GET['wk'] = $default_week;
+
 if (!canViewProjectSchedules($access_info, $weeks[$default_week_id])) {
 	if (!canViewOwnSchedule($access_info, $weeks[$default_week_id])) {
 		$img = 'https://i.imgflip.com/3krczb.jpg';
@@ -70,13 +77,6 @@ Je hebt onvoldoende rechten om iets zinnigs te zien op dit roosterbord :(
 <?php	html_end();
 	exit;
 }
-
-// if there is no week at this time, then take the newest week that does exist
-if (!$default_week_id) $default_week_id = array_key_last($weeks);
-$default_week_info = $weeks[$default_week_id];
-$default_week = $default_week_info['week'];
-
-if (!isset($_GET['wk'])) $_GET['wk'] = $default_week;
 
 $week_id = 0;
 foreach ($weeks as $idx => $week) {
