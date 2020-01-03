@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jan 03, 2020 at 08:29 PM
+-- Generation Time: Jan 03, 2020 at 08:56 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -240,13 +240,13 @@ CREATE TABLE `log` (
   `log_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
   `week_id` int(11) NOT NULL,
   `rooster_version_created` int(11) NOT NULL,
-  `rooster_version_deleted` int(11) DEFAULT NULL,
-  `appointment_id` int(11) DEFAULT NULL,
-  `appointment_zid` int(11) DEFAULT NULL,
-  `appointment_instance_zid` int(11) DEFAULT NULL,
-  `appointment_state` set('normal','cancelled','new','invalid') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `appointment_created` timestamp NULL DEFAULT NULL,
-  `appointment_lastModified` timestamp NULL DEFAULT NULL
+  `rooster_version_deleted` int(11) NOT NULL DEFAULT 2147483647,
+  `appointment_id` int(11) NOT NULL,
+  `appointment_zid` int(11) NOT NULL,
+  `appointment_instance_zid` int(11) NOT NULL,
+  `appointment_state` set('normal','cancelled','new','invalid') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `appointment_created` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `appointment_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -764,8 +764,8 @@ ALTER TABLE `holidays`
 -- Constraints for table `log`
 --
 ALTER TABLE `log`
-  ADD CONSTRAINT `log_ibfk_2` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`appointment_id`),
-  ADD CONSTRAINT `log_ibfk_4` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`);
+  ADD CONSTRAINT `log_ibfk_4` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`),
+  ADD CONSTRAINT `log_ibfk_5` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`appointment_id`);
 
 --
 -- Constraints for table `pairs`

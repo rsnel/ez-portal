@@ -1184,6 +1184,7 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 	/* first handle the appointment */
 	$zid = dereference($a, 'id');
 	$hidden = dereference($a, 'hidden');
+	$appointment_lastModified = dereference($a, 'appointmentLastModified');
 
 	// let's see if we already have this appointment
 	$old_appointment = db_single_row(<<<EOQ
@@ -1198,7 +1199,6 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 
 	if (!$hidden) {
 		$instance_zid = dereference($a, 'appointmentInstance');
-		$appointment_lastModified = dereference($a, 'appointmentLastModified');
 		$appointment_id = get_appointment_id($a);
 		$created = dereference($a, 'created');
 		$valid = dereference($a, 'valid');
@@ -1324,7 +1324,7 @@ function get_rooster_type($week_id, $rooster_version) {
 		SELECT BIT_OR(appointment_state != 'normal')
 		FROM log
 		WHERE week_id = ? AND rooster_version_created <= ? AND rooster_version_deleted > ?
-		EOQ, $week_id, $rooster_version, $week_id, $rooster_version, $rooster_version);
+		EOQ, $week_id, $rooster_version, $rooster_version);
 	if ($bool) return 'week';
 	else return 'basis';
 }

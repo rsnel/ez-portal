@@ -7,7 +7,7 @@ $access_info = get_access_info();
 
 if (!$access_info) {
 	html_start($_SERVER['EZ_PORTAL_INSTITUTION']); ?>
-	Als je toegang hebt tot <?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl, dan kun je daar inloggen en een koppelcode van 12 cijfers aanmaken. Klik op het rechthoekje met het uitgaande pijltje in de rode kolom links op het scherm en klik daarna op 'Koppel App'. De code die je dan krijgt kun je hieronder invullen om het rooster te kunnen raadplegen.
+	Als je toegang hebt tot <a href="https://<?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl/"><?=$_SERVER['EZ_PORTAL_INSTITUTION']?>.zportal.nl</a>, dan kun je daar inloggen en een koppelcode van 12 cijfers aanmaken. Klik op het rechthoekje met het uitgaande pijltje in de rode kolom links op het scherm en klik daarna op 'Koppel App'. De code die je dan krijgt kun je hieronder invullen om het rooster te kunnen raadplegen.
 
 <p>
 <form action="req_access_token.php" method="POST" accept-charset="UTF-8">
