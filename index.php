@@ -94,16 +94,22 @@ if (!$week_id) {
 
 //echo("week_id=$week_id\n");
 $rooster_info = db_single_row(<<<EOQ
-SELECT version, WKTM(last_modified) last_modified, rooster_type type
+SELECT version, WKTM(last_modified) last_modified, rooster_id
 FROM (
-	SELECT COUNT(rooster_id) version, rooster_type,
-		MAX(rooster_lastModified) last_modified
+	SELECT COUNT(rooster_id) version,
+		MAX(rooster_lastModified) last_modified, MAX(rooster_id) rooster_id
 	FROM roosters
 	WHERE rooster_ok = 1
 	AND week_id = ?
 ) AS tmp
 EOQ, $week_id);
 
+$rooster_info['type'] = db_single_field("SELECT rooster_type FROM roosters WHERE rooster_id = ?",
+	$rooster_info['rooster_id']);
+$estgrps_id = db_single_field("SELECT estgrps_id FROM roosters WHERE rooster_id = ?",
+	$rooster_info['rooster_id']);
+$estgrps_comment = db_single_field("SELECT estgrps_comment FROM roosters WHERE rooster_id = ?",
+	$rooster_info['rooster_id']);
 if (!$rooster_info) fatal("no rooster info?!?!?!");
 $rooster_version = $rooster_info['version'];
 
@@ -261,13 +267,19 @@ case 'STAMKLAS':
 	$lln_entity_ids = lln_query($entity_id, $rooster_version,
 		$participations_version, $week_id);
 	$data = master_query($lln_entity_ids, 'students', $rooster_version,
-		$participations_version, $week_id);
+		$participations_version, $week_id, $estgrps_id);
 	if ($entity_multiple) $type = 'groepen '.$entity_name;
 	else $type = 'groep '.$entity_name;
-	$type .= <<<EOT
-		 <span class="unknown">door nog ontbrekende informatie worden
-		leerling- en groepsroosters mogelijk niet volledig weergegven</span>
-		EOT;
+	if (!$estgrps_id) {
+		$type .= <<<EOT
+			 <span class="unknown">door nog ontbrekende informatie worden
+			leerling- en groepsroosters mogelijk niet volledig weergegven</span>
+			EOT;
+	} else if ($estgrps_comment) {
+		$type .= <<<EOQ
+			 <span class="unknown">$estgrps_comment</span>
+			EOQ;
+	}
 	break;
 case 'CATEGORIE':
 	$group_entity_ids = db_single_field(<<<EOQ
@@ -276,7 +288,7 @@ case 'CATEGORIE':
 		AND bos_id = ? AND parent_entity_id IN ( $entity_id )
 		EOQ, $sisy_id, $bos_id);
 	$data = master_query($group_entity_ids, 'groups', $rooster_version,
-		$participations_version, $week_id);
+		$participations_version, $week_id, $estgrps_id);
 	if ($entity_multiple) $type = 'categorie&euml;n '.$entity_name;
 	else $type = 'categorie '.$entity_name;
 	break;
@@ -284,7 +296,7 @@ case 'LOKAAL':
 	if ($entity_multiple) $type = 'lokalen '.$entity_name;
 	else $type = 'lokaal '.$entity_name;
 	$data = master_query($entity_id, 'locations', $rooster_version,
-		$participations_version, $week_id);
+		$participations_version, $week_id, $estgrps_id);
 	break;
 case 'PERSOON':
 	$isWhat = db_single_row("SELECT * FROM users WHERE entity_id = ?", $entity_id);
@@ -294,15 +306,21 @@ case 'PERSOON':
 		fatal("$entity_name is zowel docent als leerling, dat kan het systeem nog niet aan...");
 	if ($isWhat['isStudent']) {
 		$data = master_query($entity_id, 'students', $rooster_version,
-			$participations_version, $week_id);
+			$participations_version, $week_id, $estgrps_id);
 		if ($entity_multiple) $type = 'leerlingen '.$entity_name;
 		else $type = 'leerling '.$entity_name;
-		$type .= ' <span class="unknown">door nog ontbrekende informatie kunnen '.
-			'uitgevallen en vrijgestelde lessen ontbreken</span>';
+		if (!$estgrps_id) {
+			$type .= ' <span class="unknown">door nog ontbrekende informatie kunnen '.
+				'uitgevallen en vrijgestelde lessen ontbreken</span>';
+		} else if ($estgrps_comment) {
+			$type .= <<<EOQ
+				 <span class="unknown">$estgrps_comment</span>
+				EOQ;
+		}
 	}
 	if ($isWhat['isEmployee']) {
 		$data = master_query($entity_id, 'teachers', $rooster_version,
-			$participations_version, $week_id);
+			$participations_version, $week_id, $estgrps_id);
 		if ($entity_multiple) $type = 'docenten '.$entity_name;
 		else $type = 'docent '.$entity_name;
 	}
@@ -311,11 +329,11 @@ case 'VAK':
 	if ($entity_multiple) $type = 'vakken '.$entity_name;
 	else $type = 'vak '.$entity_name;
 	$data = master_query($entity_id, 'subjects', $rooster_version,
-		$participations_version, $week_id);
+		$participations_version, $week_id, $estgrps_id);
 	break;
 case '*':
 	$type = '*';
-	$data = master_query(NULL, '', $rooster_version, $participations_version, $week_id);
+	$data = master_query(NULL, '', $rooster_version, $participations_version, $week_id, $estgrps_id);
 	break;
 default:
 	fatal('onmogelijk type');
@@ -392,6 +410,8 @@ function print_diff($row) {
         }
         return implode('/', $output);
 }
+
+$empty_egrp_id = db_get_id('egrp_id', 'egrps', 'egrp', '');
 
 html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 	$(function(){
@@ -477,6 +497,11 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <tr class="spacer"><td><?=$i?></td>
 <?php 		for ($j = 1; $j <= 5; $j++) { ?>
 <td><?php		while ($les && $les['f_d'] == $j && $les['f_u'] == $i) {
+				if ($bw == 'b' && !$les['f_base_match']) {
+					// do not show
+					$les = next($data);
+					continue;
+				}
 				/* here we decide if and how the lesson is displayed */
 				if (show_cancelled($les, $bw)) {
 					// deze les is uitgevallen
@@ -538,6 +563,16 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <tr><td><?=implode("</td>\n<td>/</td>\n<td>", $info)?></td></tr>
 </table>
 <?php			 	}
+				if ($bw != 'b' && $les['f_base_students_egrp_id'] != 
+						$les['f_week_students_egrp_id']) {
+					if ($les['f_base_match'] && $les['f_week_match'] && $les['f_base_students_egrp_id'] != $empty_egrp_id && $les['f_week_students_egrp_id'] != $empty_egrp_id) { ?>
+<span class="mark inschrijvinggewijzigd"></span>
+<?php					} else if (($les['f_base_match'] && !$les['f_week_match']) || $les['f_week_students_egrp_id'] == $empty_egrp_id)  { ?>
+<span class="mark uitgeschreven"></span>
+<?php					} else { ?>
+<span class="mark ingeschreven"></span>
+<?php					}
+				}
 				if ($comment) { ?>
 <div class="comment"><?=$comment?></div>
 <?php				} ?>
@@ -550,22 +585,23 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <?php	}?>
 </table>
 <?php if ($bw == 'w') { ?>
-<div class="noprint small">Kleurcodes:
-<span class="legenda uitval">&nbsp;</span>&nbsp;uitval,
-<span class="legenda gewijzigd">&nbsp;</span>&nbsp;gewijzigd,
-<span class="legenda extra">&nbsp;</span>&nbsp;nieuw,
-<span class="legenda verplaatstvan">&nbsp;</span>&nbsp;verplaatst van,
-<span class="legenda verplaatstnaar">&nbsp;</span>&nbsp;verplaatst naar,
-<span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling.
+<div class="noprint small">Kleurcodes en symbolen:
+<span class="legenda uitval">&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;uitval,
+<span class="legenda gewijzigd">&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;gewijzigd,
+<span class="legenda extra">&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;nieuw,
+<span class="legenda verplaatstvan">&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;verplaatst van,
+<span class="legenda verplaatstnaar">&nbsp;&nbsp;&nbsp;&nbsp;</span>&nbsp;verplaatst naar,
+<span class="legenda inschrijvinggewijzigd"></span>&nbsp;inschrijving gewijzigd,
+<span class="legenda uitgeschreven"></span>&nbsp;uitgeschreven,
+<span class="legenda ingeschreven"></span>&nbsp;ingeschreven.
+<!--<span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling.-->
 </div>
 <?php }
 }
 ?>
 <span id="updateinfo">
-Rooster v<?=$rooster_version?>,
-laatste wijziging <?=$rooster_info['last_modified']?>,
-deelnames v<?=$participations_version?>,
-laatste wijziging <?=$pversion_info['last_modified']?>,
+Rooster v<?=$rooster_version?>/<?=$rooster_info['last_modified']?>,
+deelnames v<?=$participations_version?>/<?=$pversion_info['last_modified']?>,
 laatste synchronisatie <?=$weeks[$week_id]['last_sync']?>.
 <a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>
 </span>

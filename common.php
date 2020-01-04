@@ -665,40 +665,68 @@ function show_normal($les, $bw) {
 			( $les['f_s'] == 'normal'  && !$les['s_id'] ) );
 }
 
-function master_query($entity_ids, $kind, $rooster_version, $participations_version, $week_id) {
+function master_query($entity_ids, $kind, $rooster_version,
+		$participations_version, $week_id, $estgrps_id) {
+	$match = ', 1 f_base_match, 1 f_week_match';
 	if (!$entity_ids) {
 		$join = '';
 		$where = '';
 	} else if ($kind == 'students') {
-		$join = <<<EOJ
-			JOIN (
-				SELECT week_id, appointment_instance_zid, students_egrp_id
-				FROM participations 
-				WHERE participations_version_created <= $participations_version
-				AND participations_version_deleted > $participations_version
-				AND week_id = $week_id
-			) AS valid_participations USING (appointment_instance_zid)
-			JOIN entities2egrps
-			ON entities2egrps.egrp_id = valid_participations.students_egrp_id\n
-			EOJ;
-		$where = " AND entity_id IN ( $entity_ids )";
+		if ($estgrps_id) {
+			$match = ", BIT_OR( base.entity_id IN ( $entity_ids ) ) f_base_match, BIT_OR( week.entity_id IN ( $entity_ids ) ) f_week_match";
+			$join = <<<EOJ
+				LEFT JOIN entities2egrps AS base
+				ON base.egrp_id = egrps2appointments.egrp_id
+				LEFT JOIN entities2egrps AS week
+				ON week.egrp_id = valid_participations.students_egrp_id\n
+				EOJ;
+			$where = " AND ( base.entity_id IN ( $entity_ids ) OR week.entity_id IN ( $entity_ids ) )";
+
+		} else {
+			$join = <<<EOJ
+				JOIN entities2egrps
+				ON entities2egrps.egrp_id = valid_participations.students_egrp_id\n
+				EOJ;
+			$where = " AND entity_id IN ( $entity_ids )";
+		}
 	} else if ($kind == 'groups' || $kind == 'subjects' ||
 			$kind == 'teachers' || $kind == 'locations') {
-		$join = "JOIN entities2egrps ON entities2egrps.egrp_id = f_a.{$kind}_egrp_id\n";
-		$where = " AND entity_id IN ( $entity_ids )";
+			$join = <<<EOJ
+				JOIN entities2egrps AS students2week
+				ON students2week.egrp_id = f_a.{$kind}_egrp_id\n
+				EOJ;
+		$where = " AND students2week.entity_id IN ( $entity_ids )";
 	} else fatal("impossible value of \$kind");
 
+	if ($estgrps_id) {
+		$select_estgrps = ', egrps2appointments.egrp_id f_base_students_egrp_id';
+		$join_estgrps = <<<EOJ
+			JOIN egrps2appointments ON estgrps_id = $estgrps_id
+			AND egrps2appointments.appointment_id = f_a.appointment_id\n
+			EOJ;
+	} else {
+		$join_estgrps = '';
+		$select_estgrps = ', valid_participations.students_egrp_id f_base_students_egrp_id';
+	}
 	return db_query(<<<EOQ
-		SELECT DISTINCT f_l.log_id f_id, f_a.appointment_id f_aid,
+		SELECT f_l.log_id f_id, f_a.appointment_id f_aid,
 			f_l.appointment_instance_zid zid, f_a.appointment_day f_d,
 			f_a.appointment_timeSlot f_u, f_l.appointment_state f_s,
 			f_a.groups f_groups, f_a.subjects f_subjects,
-			f_a.teachers f_teachers, f_a.locations f_locations,
+			f_a.teachers f_teachers, f_a.locations f_locations$select_estgrps,
+			valid_participations.students_egrp_id f_week_students_egrp_id$match,
 			pairs.paired_log_id s_id, s_a.appointment_id s_aid, s_a.appointment_day s_d,
 			s_a.appointment_timeSlot s_u, s_a.groups s_groups, s_a.subjects s_subjects,
 			s_a.teachers s_teachers, s_a.locations s_locations
 		FROM log AS f_l
 		JOIN appointments AS f_a USING (appointment_id)
+		{$join_estgrps}JOIN (
+			SELECT week_id, appointment_instance_zid, students_egrp_id
+			FROM participations 
+			WHERE participations_version_created <= $participations_version
+			AND participations_version_deleted > $participations_version
+			AND week_id = $week_id
+		) AS valid_participations USING (appointment_instance_zid)
 		{$join}LEFT JOIN (
 			SELECT log_id, paired_log_id, appointment_id FROM pairs
 			WHERE rooster_version_created <= $rooster_version
@@ -709,6 +737,7 @@ function master_query($entity_ids, $kind, $rooster_version, $participations_vers
 		WHERE f_l.week_id = $week_id AND f_l.rooster_version_created <= $rooster_version$where
 		AND f_a.appointment_timeSlot > 0
 		AND f_l.rooster_version_deleted > $rooster_version
+		GROUP BY f_l.log_id
 		ORDER BY f_u, f_d,
 		CASE f_s WHEN 'cancelled' THEN 0
 			WHEN 'invalid' THEN 1 WHEN 'normal' THEN 2 WHEN 'new' THEN 3 END
@@ -810,7 +839,7 @@ function search_on_zid($entity_zid, $type) {
 	else fatal("impossible request to search_on_zid");
 
 	$out = db_single_field("SELECT entity_name FROM entities JOIN entity_zids USING (entity_id) WHERE entity_zid = ?$where", $entity_zid);
-	if (!$out) fatal("entity with entity_zid = $entity_zid not found");
+	if (!$out) fatal("entity with entity_zid = $entity_zid of type $type not found");
 	return $out;
 }
 
@@ -833,7 +862,7 @@ function search_subject($entity_name) {
 function search_on_name($entity_name) {
 	$out = db_single_field("SELECT entity_id FROM entities WHERE entity_name = ?",
 		$entity_name);
-	if (!$out) fatal("entity with entity_zid = $entity_name not found");
+	if (!$out) fatal("entity with name $entity_name not found");
 	return $out;
 }
 
@@ -1302,8 +1331,6 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 				$instance_zid, $students_egrp_id);
 		} // participation data didn't change, do nothing
 	} else {
-		/* since we can't handle updating participations yet
-		 * we must check if we already have a new pversions open */
 		open_new_participations_version_if_needed($week_id,
 			$pversion_id, $participations_version);
 		db_exec(<<<EOQ
@@ -1337,10 +1364,7 @@ function html_print_r($array) {
 	?><pre><?php print_r($array); ?></pre><?php
 }
 
-function mk_grpest($week_id, $pversion_id, $sisy_id) {
-	$week_info = db_single_row('SELECT * FROM weeks WHERE week_id = ? AND sisy_id = ?',
-		$week_id, $sisy_id);
-	if (!$week_info) fatal("week with week_id=$week_id not found in project with sisy_id=$sisy_id");
+function mk_estgrp($pversion_id, $sisy_id) {
 	$pversion_info = db_single_row(<<<EOQ
 		SELECT week_id, COUNT(pversion_id) participations_version, BIT_AND(pversion_ok) ok
 		FROM pversions
@@ -1354,18 +1378,20 @@ function mk_grpest($week_id, $pversion_id, $sisy_id) {
 	print_r($week_info);
 	print_r($pversion_info);
 
-	$estgrps_id = db_get_id_new('estgrp_id', 'estgrps',
-		'week_id = ?', $week_id,
-		'estgrps_status = NULL', NULL,
+	db_exec('INSERT INTO estgrps ( pversion_id ) VALUES ( ? )', $pversion_id);
+	$estgrps_id = db_last_insert_id();
+	/*
+	$estgrps_id = db_get_id_new('estgrps_id', 'estgrps',
 		'pversion_id = ?', $pversion_id);
 
 	echo("estgrps_id=$estgrps_id\n");
 	db_exec("DELETE FROM estgrp2ppl");
-	db_exec("DELETE FROM estgrp2grp");
+	db_exec("DELETE FROM estgrp2bad");
+	 */
 
-	$source_week_id = $pversion_info['week_id'];
+	$week_id = $pversion_info['week_id'];
 	$participations_version = $pversion_info['participations_version'];
-	echo("source: week_id = $source_week_id, participations_version = $participations_version\n");
+	echo("source: week_id = $week_id, participations_version = $participations_version\n");
 
 	$boss_infos = db_all_assoc_rekey(<<<EOQ
 		SELECT * FROM boss
@@ -1378,13 +1404,13 @@ function mk_grpest($week_id, $pversion_id, $sisy_id) {
 	foreach ($boss_infos as $boss) {
 		echo("estimiating groups in:\n");
 		print_r($boss);
-		mk_grpest_in_boss($estgrps_id, $source_week_id,
+		mk_estgrp_in_bos($estgrps_id, $week_id,
 			$participations_version, $boss['bos_id'], $sisy_id);
 
 	}
 }
 
-function mk_grpest_in_boss($estgrps_id, $week_id, $participations_version, $bos_id, $sisy_id) {
+function mk_estgrp_in_bos($estgrps_id, $week_id, $participations_version, $bos_id, $sisy_id) {
 	echo("estgrp_id=$estgrps_id, week_id=$week_id, ".
 		"participations_version=$participations_version, bos_id=$bos_id, sisy_id=$sisy_id\n");
 
@@ -1408,15 +1434,21 @@ function mk_grpest_in_boss($estgrps_id, $week_id, $participations_version, $bos_
 		$info = db_single_row(<<<EOQ
 			SELECT groups2egrps.entity_id, GROUP_CONCAT(DISTINCT student.entity_name
 				ORDER BY student.entity_name) AS lln, egrp_count,
+				GROUP_CONCAT(DISTINCT CONCAT(category.entity_name, ',',
+					grp.entity_name) SEPARATOR ';') aux,
 				groups.egrp, groups.egrp_id
 			FROM participations
 			JOIN log USING (week_id, appointment_instance_zid)
 			JOIN appointments USING (appointment_id)
 			JOIN egrps AS groups ON groups.egrp_id = groups_egrp_id
 			JOIN entities2egrps AS groups2egrps USING (egrp_id)
+			JOIN entities2egrps AS aux2egrps USING (egrp_id)
+			JOIN entities AS grp ON grp.entity_id = aux2egrps.entity_id
+			JOIN entity_zids ON appointments.bos_id = entity_zids.bos_id AND entity_zids.sisy_id = $sisy_id AND entity_zids.entity_id = grp.entity_id
+			JOIN entities AS category ON entity_zids.parent_entity_id = category.entity_id
 			JOIN entities2egrps AS students ON students.egrp_id = students_egrp_id
 			JOIN entities AS student ON student.entity_id = students.entity_id
-			WHERE week_id = $week_id AND bos_id = $bos_id
+			WHERE week_id = $week_id AND appointments.bos_id = $bos_id
 			AND participations_version_created <= $participations_version
 			AND participations_version_deleted > $participations_version
 			AND groups2egrps.entity_id = $entity_id AND egrp_count >= 1
@@ -1425,6 +1457,14 @@ function mk_grpest_in_boss($estgrps_id, $week_id, $participations_version, $bos_
 
 		if (!$info) continue;
 
+		$aux = explode(';', $info['aux']);
+		$new_aux = array();
+		foreach ($aux as $stuff) {
+			$stuff = explode(',', $stuff);
+			if (!isset($new_aux[$stuff[0]])) $new_aux[$stuff[0]] = array();
+			$new_aux[$stuff[0]][] = $stuff[1];
+		}
+		$info['aux'] = $new_aux;
 		$students[$entity_id] = $info;
 
 		$categories = db_single_field(<<<EOQ
@@ -1488,32 +1528,190 @@ function mk_grpest_in_boss($estgrps_id, $week_id, $participations_version, $bos_
 		//echo("entity_id=$entity_id\n");
 		//print_r($info);
 		//print_r($groups[$entity_id]);
+		if (count($info['aux'][$groups[$entity_id]['categorie_name']]) > 1) continue;
+		//exit;
 		if (!$info['lln']) continue;
-		$students = array();
+		$list = array();
 		foreach (explode(',', $info['lln']) as $ll) {
 			if ($students2category[$ll] == $groups[$entity_id]['categorie_name']) {
-				$students[] = $ll;
+				$list[] = $ll;
 			}
 		}
-		$students = implode(',', functionalsort($students));
-		$egrp_id = db_get_egrp_id($students, 'search_on_name');
+		$list = implode(',', functionalsort($list));
+		$egrp_id = db_get_egrp_id($list, 'search_on_name');
 		db_exec(<<<EOQ
 			INSERT INTO estgrp2ppl ( estgrps_id, entity_id, egrp_id )
 			VALUES ( $estgrps_id, $entity_id, $egrp_id )
 			EOQ);
 
+		unset($students[$entity_id]);
 	}
 
-	db_exec(<<<EOQ
-		INSERT INTO estgrp2grp ( estgrps_id, group0_entity_id, group1_entity_id )
-		SELECT DISTINCT $estgrps_id, estgrp2ppl.entity_id, estppl2grp.entity_id
-		FROM estgrp2ppl
-		JOIN entities2egrps USING (egrp_id)
-		JOIN entities2egrps AS egrps2entities
-		ON egrps2entities.entity_id = entities2egrps.entity_id
-		JOIN estgrp2ppl AS estppl2grp
-		ON estppl2grp.estgrps_id = 40 AND estppl2grp.egrp_id = egrps2entities.egrp_id
-		WHERE estgrp2ppl.estgrps_id = 40
+	echo("resterend\n");
+	foreach ($students as $entity_id => $info) {
+		echo("entity_id=$entity_id\n");
+		if (!$info['lln']) continue;
+		print_r($info);
+		print_r($groups[$entity_id]);
+		$todeal = $info['aux'][$groups[$entity_id]['categorie_name']];
+		print_r($todeal);
+		$infos = array();
+		foreach ($todeal as $idx => $name) {
+			echo("name=$name\n");
+			if (!preg_match('/(.+)\.(.+)/', $name, $infos[$idx])) 
+				fatal("unhappy group has no dot");
+		}
+		print_r($infos);
+		$newname = $infos[0][1];
+		$separator = '.';
+		foreach ($infos as $match) {
+			$newname .= $separator.$match[2];
+			$separator = '+';
+		}
+		echo($newname."\n");
+		$list = array();
+		foreach (explode(',', $info['lln']) as $ll) {
+			if ($students2category[$ll] == $groups[$entity_id]['categorie_name']) {
+				$list[] = $ll;
+			}
+		}
+		$old_entity_id = $entity_id;
+		$entity_id = db_get_entity_id($newname, 'LESGROEP');
+		$list = implode(',', functionalsort($list));
+		$egrp_id = db_get_egrp_id($list, 'search_on_name');
+		$estgrp2ppl_id = db_get_id('estgrp2ppl_id', 'estgrp2ppl', 'estgrps_id', $estgrps_id,
+			'entity_id', $entity_id, 'egrp_id', $egrp_id);
+		
+		db_exec(<<<EOQ
+			INSERT INTO estgrp2bad ( estgrps_id, entity_id, estgrp2ppl_id )
+			VALUES ( $estgrps_id, $old_entity_id, $estgrp2ppl_id )
+			EOQ);
+		/*
+		db_exec(<<<EOQ
+			INSERT IGNORE INTO estgrp2ppl ( estgrps_id, entity_id, egrp_id )
+			VALUES ( $estgrps_id, $entity_id, $egrp_id )
+			EOQ);
+		 */
+	}
+}
+
+function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
+	$estgrps = db_single_row("SELECT * FROM estgrps JOIN pversions USING (pversion_id) WHERE estgrps_id = ?", $estgrps_id);
+	if (!$estgrps) fatal("unknown etsgrps");
+	print_r($estgrps);
+	$rooster = db_single_row('SELECT * FROM roosters WHERE rooster_id = ?', $rooster_id);
+	if (!$rooster) fatal("unknown rooster");
+	print_r($rooster);
+
+	$participations_version_info = db_single_row(<<<EOQ
+		SELECT COUNT(pversion_id) version, BIT_AND(pversion_ok) ok
+		FROM pversions WHERE pversion_id <= ? AND week_id = {$estgrps['week_id']}
+		EOQ, $estgrps['pversion_id']);
+	print_r($participations_version_info);
+	if ($participations_version_info['version'] == 0) fatal("pversion not found");
+	$participations_version = $participations_version_info['version'];
+	if (!$participations_version_info['ok']) fatal("pversion broken");
+
+	$rooster_version_info = db_single_row(<<<EOQ
+		SELECT COUNT(rooster_id) version, BIT_AND(rooster_ok) ok
+		FROM roosters WHERE rooster_id <= ? AND week_id = {$rooster['week_id']}
+		EOQ, $rooster_id);
+
+	print_r($rooster_version_info);
+	if ($rooster_version_info['version'] == 0) fatal("rooster not found");
+	$rooster_version = $rooster_version_info['version'];
+	if (!$rooster_version_info['ok']) fatal('rooster broken');
+
+	$groupsstudents = db_all_assoc_rekey(<<<EOQ
+		SELECT groups_egrp_id, students_egrp_id FROM participations
+		JOIN log USING (appointment_instance_zid, week_id)
+		JOIN appointments USING (appointment_id)
+		WHERE participations_version_created <= $participations_version
+		AND participations_version_deleted > $participations_version
+		AND week_id = {$estgrps['week_id']}
 		EOQ);
+
+	//print_r($groupsstudents);
+	echo(count($groupsstudents)."\n");
+	// now link this information to all appointments in rooster_id 
+
+	$empty_egrp_id = db_get_id('egrp_id', 'egrps', 'egrp', '');
+
+
+	$appointments = db_all_assoc(<<<EOQ
+		SELECT * FROM log
+		JOIN appointments USING (appointment_id)
+		WHERE rooster_version_created <= $rooster_version
+		AND rooster_version_deleted > $rooster_version
+		AND week_id = {$rooster['week_id']}
+		EOQ);
+
+	$missing_grousp = array();
+	foreach ($appointments as $appointment) {
+		if (isset($groupsstudents[$appointment['groups_egrp_id']])) {
+			db_exec(<<<EOQ
+				INSERT IGNORE INTO egrps2appointments
+					( estgrps_id, appointment_id, egrp_id )
+				VALUES ( ?, ?, ? )
+				EOQ, $estgrps_id,
+				$appointment['appointment_id'],
+				$groupsstudents[$appointment['groups_egrp_id']]);
+		} else {
+			// no, so we have to create the group ourselves
+			$groups = db_single_field(<<<EOQ
+				SELECT GROUP_CONCAT(entity_id) FROM entities2egrps WHERE egrp_id = ?
+				EOQ, $appointment['groups_egrp_id']);
+			$groups = explode(',', $groups);
+			$students = array();
+			foreach ($groups as $group) {
+				$lln = db_single_field(<<<EOQ
+					SELECT egrp
+					FROM estgrp2ppl
+					JOIN egrps USING (egrp_id)
+					WHERE entity_id = ?
+					EOQ, $group);
+				if (!$lln) {
+					$group_name = db_single_field("SELECT entity_name FROM entities WHERE entity_id = ?", $group);
+					$missing[$group_name] = 1;
+					echo("group $group_name not found\n");
+					continue;
+				}
+				foreach (explode(',', $lln) as $ll) {
+					$students[$ll] = 1;
+				}
+			}	
+			if (count($students) == 0) {
+				/* storing empty group, because we don't have any data */
+				db_exec(<<<EOQ
+					INSERT IGNORE INTO egrps2appointments
+						( estgrps_id, appointment_id, egrp_id )
+					VALUES ( ?, ?, ? )
+					EOQ, $estgrps_id,
+					$appointment['appointment_id'], $empty_egrp_id);
+			} else {
+				$lln = array();
+				foreach ($students as $ll => $value) {
+					$lln[] = $ll;
+				}
+				$lln = implode(',', functionalsort($lln));
+				$egrp_id = db_get_egrp_id($lln, 'search_on_name');
+				db_exec(<<<EOQ
+					INSERT IGNORE INTO egrps2appointments
+						( estgrps_id, appointment_id, egrp_id )
+					VALUES ( ?, ?, ? )
+					EOQ, $estgrps_id,
+					$appointment['appointment_id'], $egrp_id);
+			}
+		}
+	}
+	$missing = array_keys($missing);
+	print_r($missing);
+	$missing = implode(',', functionalsort($missing));
+	if ($missing) $missing = 'Informatie over de groepen '.$missing.' is niet beschikbaar.';
+	db_exec('UPDATE roosters SET estgrps_id = ?, estgrps_comment = ? WHERE rooster_id = ?',
+		$estgrps_id, $missing, $rooster_id);
+	//print_r($appointments);
+	//echo("empty_egrp_id=$empty_egrp_id\n");
+	
 }
 ?>

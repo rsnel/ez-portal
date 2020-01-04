@@ -86,8 +86,11 @@ div.les:first-child {
 .unknown {
         color: red;
 }
+.mark {
+        padding: 0px 0em 0px 0em; border: 0px solid black;
+}
 .legenda {
-        padding: 0px 0em 0px .9em; border: 1px solid black;
+        padding: 0px 0em 0px 0em; border: 1px solid black;
 }
 .tiny {
         font-size: 9px;
@@ -115,6 +118,18 @@ div.les:first-child {
 }
 .extra {
         background-color: #BBFFBB;
+}
+.ingeschreven:after {
+	content: " ←";
+        /*background-color: #FF7F00;*/
+}
+.uitgeschreven:after {
+	content: " →";
+        /*background-color: #FF00FF;*/
+}
+.inschrijvinggewijzigd:after {
+	content: " ↭";
+        /*background-color: #FFFF00;*/
 }
 .gewijzigd {
         background-color: #FFFF99;

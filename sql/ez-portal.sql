@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jan 03, 2020 at 08:56 PM
+-- Generation Time: Jan 04, 2020 at 09:02 PM
 -- Server version: 10.3.17-MariaDB-0+deb10u1
 -- PHP Version: 7.3.9-1~deb10u1
 
@@ -17,7 +17,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `ez-portal_ovc-prod`
+-- Database: `ez-portal_ovc-dev`
 --
 
 DELIMITER $$
@@ -109,6 +109,19 @@ CREATE TABLE `egrps` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `egrps2appointments`
+--
+
+CREATE TABLE `egrps2appointments` (
+  `egrp2appointment_id` int(11) NOT NULL,
+  `estgrps_id` int(11) NOT NULL,
+  `appointment_id` int(11) NOT NULL,
+  `egrp_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `entities`
 --
 
@@ -165,14 +178,14 @@ CREATE TABLE `errorlog` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `estgrp2grp`
+-- Table structure for table `estgrp2bad`
 --
 
-CREATE TABLE `estgrp2grp` (
-  `estgrp2grp_id` int(11) NOT NULL,
+CREATE TABLE `estgrp2bad` (
+  `estgrp2bad_id` int(11) NOT NULL,
   `estgrps_id` int(11) NOT NULL,
-  `group0_entity_id` int(11) NOT NULL,
-  `group1_entity_id` int(11) NOT NULL
+  `entity_id` int(11) NOT NULL,
+  `estgrp2ppl_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -195,9 +208,7 @@ CREATE TABLE `estgrp2ppl` (
 --
 
 CREATE TABLE `estgrps` (
-  `estgrp_id` int(11) NOT NULL,
-  `estgrps_status` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `week_id` int(11) NOT NULL,
+  `estgrps_id` int(11) NOT NULL,
   `pversion_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
@@ -306,7 +317,9 @@ CREATE TABLE `roosters` (
   `week_id` int(11) NOT NULL,
   `rooster_lastModified` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   `rooster_type` enum('basis','week') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `rooster_ok` int(11) NOT NULL DEFAULT 0
+  `rooster_ok` int(11) NOT NULL DEFAULT 0,
+  `estgrps_id` int(11) DEFAULT NULL,
+  `estgrps_comment` text COLLATE utf8mb4_unicode_ci NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=COMPACT;
 
 -- --------------------------------------------------------
@@ -432,6 +445,15 @@ ALTER TABLE `egrps`
   ADD PRIMARY KEY (`egrp_id`);
 
 --
+-- Indexes for table `egrps2appointments`
+--
+ALTER TABLE `egrps2appointments`
+  ADD PRIMARY KEY (`egrp2appointment_id`),
+  ADD UNIQUE KEY `estgrps_id` (`estgrps_id`,`appointment_id`) USING BTREE,
+  ADD KEY `appointment_id` (`appointment_id`,`egrp_id`),
+  ADD KEY `estgrps_id_2` (`estgrps_id`);
+
+--
 -- Indexes for table `entities`
 --
 ALTER TABLE `entities`
@@ -466,13 +488,14 @@ ALTER TABLE `errorlog`
   ADD PRIMARY KEY (`errorlog_id`);
 
 --
--- Indexes for table `estgrp2grp`
+-- Indexes for table `estgrp2bad`
 --
-ALTER TABLE `estgrp2grp`
-  ADD PRIMARY KEY (`estgrp2grp_id`),
-  ADD UNIQUE KEY `estgrps_id` (`estgrps_id`,`group0_entity_id`,`group1_entity_id`),
-  ADD KEY `group0_entity_id` (`group0_entity_id`),
-  ADD KEY `group1_entity_id` (`group1_entity_id`);
+ALTER TABLE `estgrp2bad`
+  ADD PRIMARY KEY (`estgrp2bad_id`),
+  ADD UNIQUE KEY `estgrps_id` (`estgrps_id`,`entity_id`,`estgrp2ppl_id`),
+  ADD UNIQUE KEY `estgrps_id_2` (`estgrps_id`,`entity_id`),
+  ADD KEY `entity_id` (`entity_id`),
+  ADD KEY `students_egrp_id` (`estgrp2ppl_id`);
 
 --
 -- Indexes for table `estgrp2ppl`
@@ -487,9 +510,8 @@ ALTER TABLE `estgrp2ppl`
 -- Indexes for table `estgrps`
 --
 ALTER TABLE `estgrps`
-  ADD PRIMARY KEY (`estgrp_id`),
-  ADD UNIQUE KEY `week_id` (`week_id`),
-  ADD KEY `pversion_id` (`pversion_id`);
+  ADD PRIMARY KEY (`estgrps_id`),
+  ADD UNIQUE KEY `pversion_id` (`pversion_id`) USING BTREE;
 
 --
 -- Indexes for table `holidays`
@@ -609,6 +631,11 @@ ALTER TABLE `config`
 ALTER TABLE `egrps`
   MODIFY `egrp_id` int(11) NOT NULL AUTO_INCREMENT;
 --
+-- AUTO_INCREMENT for table `egrps2appointments`
+--
+ALTER TABLE `egrps2appointments`
+  MODIFY `egrp2appointment_id` int(11) NOT NULL AUTO_INCREMENT;
+--
 -- AUTO_INCREMENT for table `entities`
 --
 ALTER TABLE `entities`
@@ -629,10 +656,10 @@ ALTER TABLE `entity_zids`
 ALTER TABLE `errorlog`
   MODIFY `errorlog_id` int(11) NOT NULL AUTO_INCREMENT;
 --
--- AUTO_INCREMENT for table `estgrp2grp`
+-- AUTO_INCREMENT for table `estgrp2bad`
 --
-ALTER TABLE `estgrp2grp`
-  MODIFY `estgrp2grp_id` int(11) NOT NULL AUTO_INCREMENT;
+ALTER TABLE `estgrp2bad`
+  MODIFY `estgrp2bad_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `estgrp2ppl`
 --
@@ -642,7 +669,7 @@ ALTER TABLE `estgrp2ppl`
 -- AUTO_INCREMENT for table `estgrps`
 --
 ALTER TABLE `estgrps`
-  MODIFY `estgrp_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `estgrps_id` int(11) NOT NULL AUTO_INCREMENT;
 --
 -- AUTO_INCREMENT for table `holidays`
 --
@@ -732,18 +759,10 @@ ALTER TABLE `entity_zids`
   ADD CONSTRAINT `entity_zids_ibfk_4` FOREIGN KEY (`sisy_id`) REFERENCES `sisys` (`sisy_id`);
 
 --
--- Constraints for table `estgrp2grp`
---
-ALTER TABLE `estgrp2grp`
-  ADD CONSTRAINT `estgrp2grp_ibfk_1` FOREIGN KEY (`estgrps_id`) REFERENCES `estgrps` (`estgrp_id`),
-  ADD CONSTRAINT `estgrp2grp_ibfk_2` FOREIGN KEY (`group0_entity_id`) REFERENCES `entities` (`entity_id`),
-  ADD CONSTRAINT `estgrp2grp_ibfk_3` FOREIGN KEY (`group1_entity_id`) REFERENCES `entities` (`entity_id`);
-
---
 -- Constraints for table `estgrp2ppl`
 --
 ALTER TABLE `estgrp2ppl`
-  ADD CONSTRAINT `estgrp2ppl_ibfk_1` FOREIGN KEY (`estgrps_id`) REFERENCES `estgrps` (`estgrp_id`),
+  ADD CONSTRAINT `estgrp2ppl_ibfk_1` FOREIGN KEY (`estgrps_id`) REFERENCES `estgrps` (`estgrps_id`),
   ADD CONSTRAINT `estgrp2ppl_ibfk_2` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`entity_id`),
   ADD CONSTRAINT `estgrp2ppl_ibfk_3` FOREIGN KEY (`egrp_id`) REFERENCES `egrps` (`egrp_id`);
 
@@ -751,7 +770,6 @@ ALTER TABLE `estgrp2ppl`
 -- Constraints for table `estgrps`
 --
 ALTER TABLE `estgrps`
-  ADD CONSTRAINT `estgrps_ibfk_1` FOREIGN KEY (`week_id`) REFERENCES `weeks` (`week_id`),
   ADD CONSTRAINT `estgrps_ibfk_2` FOREIGN KEY (`pversion_id`) REFERENCES `pversions` (`pversion_id`);
 
 --
