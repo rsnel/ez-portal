@@ -110,6 +110,25 @@ $estgrps_id = db_single_field("SELECT estgrps_id FROM roosters WHERE rooster_id 
 	$rooster_info['rooster_id']);
 $estgrps_comment = db_single_field("SELECT estgrps_comment FROM roosters WHERE rooster_id = ?",
 	$rooster_info['rooster_id']);
+$estgrps_pversion_id = db_single_field(<<<EOQ
+	SELECT pversion_id
+	FROM roosters JOIN estgrps
+	USING (estgrps_id)
+	WHERE rooster_id = ?
+	EOQ, $rooster_info['rooster_id']);
+
+$estgrps_pversion_info = db_single_row(<<<EOQ
+	SELECT *, WKTM(pversion_lastModified) last_modified
+	FROM pversions
+	JOIN weeks USING (week_id)
+	JOIN (
+		SELECT week_id, COUNT(pversion_id) version
+		FROM pversions
+		GROUP BY week_id
+	) AS pversion_version USING (week_id)
+	WHERE pversion_id = ?
+	EOQ, $estgrps_pversion_id);
+
 if (!$rooster_info) fatal("no rooster info?!?!?!");
 $rooster_version = $rooster_info['version'];
 
@@ -601,6 +620,9 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 ?>
 <span id="updateinfo">
 Rooster v<?=$rooster_version?>/<?=$rooster_info['last_modified']?>,
+<?php if ($estgrps_id) { ?>
+basisgroepen uit week <?=$estgrps_pversion_info['week']?>/v<?=$estgrps_pversion_info['version']?>/<?=$estgrps_pversion_info['last_modified']?>,
+<?php } ?>
 deelnames v<?=$participations_version?>/<?=$pversion_info['last_modified']?>,
 laatste synchronisatie <?=$weeks[$week_id]['last_sync']?>.
 <a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>
