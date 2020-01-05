@@ -12,6 +12,11 @@ function canViewOwnSchedule($access_info, $week) {
 	else return 0;
 }
 
+function canViewProjectNames($access_info, $week) {
+	if ($access_info['isStudent'] && $week['studentCanViewProjectNames']) return 1;
+	else if ($access_info['isEmployee']) return 1;
+}
+
 $config_defaults = array(
 	'PORTAL' => '?',
 	'STRIP_CATEGORIE_OF_STAMKLAS' => 'true',
@@ -905,7 +910,8 @@ function get_weeks_to_update($past = false) {
 
 	return db_all_assoc(<<<EOQ
 		SELECT week_id, year, week, sisy_project, sisy_zid,
-			UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp
+			UNIX_TIMESTAMP(monday_timestamp) monday_unix_timestamp,
+			ma, di, wo, do, vr
 		FROM weeks
 		JOIN sisys USING (sisy_id)
 		WHERE sisy_archived != 1 AND employeeCanViewProjectSchedules = 1$future$respect_holidays
@@ -1061,6 +1067,21 @@ function update_appointments_in_week($week) {
 		// and store it
 		db_exec('UPDATE roosters SET rooster_type = ? WHERE rooster_id = ?',
 			$type, $rooster_id);
+
+	}
+
+	// if new paticipations and week is complete, and rooster type is basis, generate groups
+	if ($participations_open && $week['week_id']['ma'] && $week['week_id']['di'] &&
+			$week['week_id']['wo'] && $week['week_id']['do'] && $week['week_id']['vr']) {
+		$type = db_single_field('SELECT rooster_type FROM roosters WHERE rooster_id = ?',
+			$rooster_id);
+		if ($type == 'basis') {
+			mk_estgrp($pversion_id, $week['sisy_id']);
+		}
+	}
+
+	if ($schedule_open) {
+		// couple estgrp !
 	}
 
 	if (!$schedule_open && !$participations_open) {
@@ -1646,7 +1667,7 @@ function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
 		AND week_id = {$rooster['week_id']}
 		EOQ);
 
-	$missing_grousp = array();
+	$missing = array();
 	foreach ($appointments as $appointment) {
 		if (isset($groupsstudents[$appointment['groups_egrp_id']])) {
 			db_exec(<<<EOQ
@@ -1657,6 +1678,7 @@ function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
 				$appointment['appointment_id'],
 				$groupsstudents[$appointment['groups_egrp_id']]);
 		} else {
+			//echo($appointment['groups_egrp_id'].' '.$appointment['groups']."\n");
 			// no, so we have to create the group ourselves
 			$groups = db_single_field(<<<EOQ
 				SELECT GROUP_CONCAT(entity_id) FROM entities2egrps WHERE egrp_id = ?
@@ -1670,16 +1692,19 @@ function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
 					JOIN egrps USING (egrp_id)
 					WHERE entity_id = ?
 					EOQ, $group);
-				if (!$lln) {
+				if ($lln === NULL ) {
 					$group_name = db_single_field("SELECT entity_name FROM entities WHERE entity_id = ?", $group);
 					$missing[$group_name] = 1;
 					echo("group $group_name not found\n");
 					continue;
 				}
-				foreach (explode(',', $lln) as $ll) {
+				if ($lln) foreach (explode(',', $lln) as $ll) {
 					$students[$ll] = 1;
 				}
 			}	
+			if (count($missing)) {
+				echo("still missing: ".implode(',', $missing)."\n");
+			}
 			if (count($students) == 0) {
 				/* storing empty group, because we don't have any data */
 				db_exec(<<<EOQ
@@ -1705,9 +1730,10 @@ function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
 		}
 	}
 	$missing = array_keys($missing);
-	print_r($missing);
+	//print_r($missing);
 	$missing = implode(',', functionalsort($missing));
 	if ($missing) $missing = 'Informatie over de groepen '.$missing.' is niet beschikbaar.';
+	//echo("rooster_id=$rooster_id\n");
 	db_exec('UPDATE roosters SET estgrps_id = ?, estgrps_comment = ? WHERE rooster_id = ?',
 		$estgrps_id, $missing, $rooster_id);
 	//print_r($appointments);

@@ -613,7 +613,6 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <span class="legenda inschrijvinggewijzigd"></span>&nbsp;inschrijving gewijzigd,
 <span class="legenda uitgeschreven"></span>&nbsp;uitgeschreven,
 <span class="legenda ingeschreven"></span>&nbsp;ingeschreven.
-<!--<span class="legenda vrijstelling">&nbsp;</span>&nbsp;vrijstelling.-->
 </div>
 <?php }
 }
@@ -622,6 +621,8 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 Rooster v<?=$rooster_version?>/<?=$rooster_info['last_modified']?>,
 <?php if ($estgrps_id) { ?>
 basisgroepen uit week <?=$estgrps_pversion_info['week']?>/v<?=$estgrps_pversion_info['version']?>/<?=$estgrps_pversion_info['last_modified']?>,
+<?php } else { ?>
+<span class="unknown">geen basisgroepen gekoppeld</span>,
 <?php } ?>
 deelnames v<?=$participations_version?>/<?=$pversion_info['last_modified']?>,
 laatste synchronisatie <?=$weeks[$week_id]['last_sync']?>.
