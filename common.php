@@ -134,14 +134,13 @@ function remove_access_token_cookie() {
 
 function set_employee_token() {
 	$candidates = db_all_assoc_rekey(<<<EOQ
-SELECT *
-FROM users
-JOIN access
-USING (entity_id)
-WHERE TIMESTAMPDIFF(HOUR, NOW(), access_expires) >= 1
-AND isEmployee = 1
-EOQ
-	);
+		SELECT *
+		FROM users
+		JOIN access
+		USING (entity_id)
+		WHERE TIMESTAMPDIFF(HOUR, NOW(), access_expires) >= 1
+		AND isEmployee = 1
+		EOQ);
 
 	if (!count($candidates))
 		fatal("no user available with sufficient permissions to do anything meaningful");
@@ -153,7 +152,8 @@ EOQ
 	/* verify if the token still works (fatal error when not...) */
 	$tokeninfo = zportal_GET_row("tokens/~current");
 
-	db_exec("UPDATE access SET access_refreshed = NOW() WHERE access_id = ?", dereference($candidate, 'access_id'));
+	db_exec("UPDATE access SET access_refreshed = NOW() WHERE access_id = ?",
+		dereference($candidate, 'access_id'));
 }
 
 function db_get_entity_id($entity_name, $entity_type) {
@@ -191,25 +191,24 @@ function update_user($userinfo) {
 		$lastName = (explode(',', $lastName))[0];
 	}
 	db_exec(<<<EOQ
-UPDATE users SET firstName = ?, prefix = ?, lastName = ?,
-	isStudent = ?, isEmployee = ?, isFamilymember = ?,
-	isSchoolScheduler = ?, isSchoolLeader = ?, isStudentAdministrator = ?,
-	isTeamLeader = ?, isSectionLeader = ?, isMentor = ?,
-	isParentTeacherNightScheduler = ?, isDean = ? WHERE user_id = $user_id
-EOQ
-	, htmlenc(dereference($userinfo, 'firstName')),
-	htmlenc(dereference($userinfo, 'prefix')), htmlenc($lastName),
-	dereference($userinfo, 'isStudent'),
-	dereference($userinfo, 'isEmployee'),
-	dereference($userinfo, 'isFamilyMember'),
-	dereference($userinfo, 'isSchoolScheduler'),
-	dereference($userinfo, 'isSchoolLeader'),
-	dereference($userinfo, 'isStudentAdministrator'),
-	dereference($userinfo, 'isTeamLeader'),
-	dereference($userinfo, 'isSectionLeader'),
-	dereference($userinfo, 'isMentor'),
-	dereference($userinfo, 'isParentTeacherNightScheduler'),
-	dereference($userinfo, 'isDean'));
+		UPDATE users SET firstName = ?, prefix = ?, lastName = ?,
+			isStudent = ?, isEmployee = ?, isFamilymember = ?,
+			isSchoolScheduler = ?, isSchoolLeader = ?, isStudentAdministrator = ?,
+			isTeamLeader = ?, isSectionLeader = ?, isMentor = ?,
+			isParentTeacherNightScheduler = ?, isDean = ? WHERE user_id = $user_id
+		EOQ, htmlenc(dereference($userinfo, 'firstName')),
+		htmlenc(dereference($userinfo, 'prefix')), htmlenc($lastName),
+		dereference($userinfo, 'isStudent'),
+		dereference($userinfo, 'isEmployee'),
+		dereference($userinfo, 'isFamilyMember'),
+		dereference($userinfo, 'isSchoolScheduler'),
+		dereference($userinfo, 'isSchoolLeader'),
+		dereference($userinfo, 'isStudentAdministrator'),
+		dereference($userinfo, 'isTeamLeader'),
+		dereference($userinfo, 'isSectionLeader'),
+		dereference($userinfo, 'isMentor'),
+		dereference($userinfo, 'isParentTeacherNightScheduler'),
+		dereference($userinfo, 'isDean'));
 }
 
 function update_users() {
@@ -1381,10 +1380,6 @@ function get_rooster_type($week_id, $rooster_version) {
 	else return 'basis';
 }
 
-function html_print_r($array) {
-	?><pre><?php print_r($array); ?></pre><?php
-}
-
 function mk_estgrp($pversion_id, $sisy_id) {
 	$pversion_info = db_single_row(<<<EOQ
 		SELECT week_id, COUNT(pversion_id) participations_version, BIT_AND(pversion_ok) ok
@@ -1401,14 +1396,6 @@ function mk_estgrp($pversion_id, $sisy_id) {
 
 	db_exec('INSERT INTO estgrps ( pversion_id ) VALUES ( ? )', $pversion_id);
 	$estgrps_id = db_last_insert_id();
-	/*
-	$estgrps_id = db_get_id_new('estgrps_id', 'estgrps',
-		'pversion_id = ?', $pversion_id);
-
-	echo("estgrps_id=$estgrps_id\n");
-	db_exec("DELETE FROM estgrp2ppl");
-	db_exec("DELETE FROM estgrp2bad");
-	 */
 
 	$week_id = $pversion_info['week_id'];
 	$participations_version = $pversion_info['participations_version'];
@@ -1465,7 +1452,8 @@ function mk_estgrp_in_bos($estgrps_id, $week_id, $participations_version, $bos_i
 			JOIN entities2egrps AS groups2egrps USING (egrp_id)
 			JOIN entities2egrps AS aux2egrps USING (egrp_id)
 			JOIN entities AS grp ON grp.entity_id = aux2egrps.entity_id
-			JOIN entity_zids ON appointments.bos_id = entity_zids.bos_id AND entity_zids.sisy_id = $sisy_id AND entity_zids.entity_id = grp.entity_id
+			JOIN entity_zids ON appointments.bos_id = entity_zids.bos_id
+			AND entity_zids.sisy_id = $sisy_id AND entity_zids.entity_id = grp.entity_id
 			JOIN entities AS category ON entity_zids.parent_entity_id = category.entity_id
 			JOIN entities2egrps AS students ON students.egrp_id = students_egrp_id
 			JOIN entities AS student ON student.entity_id = students.entity_id

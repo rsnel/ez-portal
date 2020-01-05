@@ -51,4 +51,9 @@ Sourcecode: git clone <a href="https://github.com/rsnel/ez-portal/">https://gith
 </body>
 </html>
 <?php }
+
+function html_print_r($array) { ?>
+<pre><?php print_r($array); ?></pre>
+<?php }
+
 ?>

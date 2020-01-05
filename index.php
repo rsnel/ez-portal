@@ -295,6 +295,10 @@ case 'STAMKLAS':
 			leerling- en groepsroosters mogelijk niet volledig weergegven</span>
 			EOT;
 	} else if ($estgrps_comment) {
+		/*$llijst = array();
+		foreach (explode(',', $entity_id) as $id) {
+			echo("$entity_id\n");
+		}*/
 		$type .= <<<EOQ
 			 <span class="unknown">$estgrps_comment</span>
 			EOQ;
@@ -495,11 +499,24 @@ html_start($_SERVER['EZ_PORTAL_INSTITUTION'], <<<EOS
 <?php
 } else {
 	?><p><?php
+	if ($entity_type == 'LESGROEP' || $entity_type == 'STAMKLAS') { ?>
+<form method="GET" name="leerling" accept-charset="UTF-8">
+<input type="hidden" name="bw" value="<?=$bw?>">
+<?php		if ($default_week == $safe_week) { ?>
+<input type="hidden" name="wk" value="">
+<?php 		} else { ?>
+<input type="hidden" name="wk" value="<?=$safe_week?>">
+<?php 		} ?>
+<?php 	}
 	if ($_GET['q']) {
 		if ($bw == 'b') echo('Basisrooster');
 		else echo('Weekrooster');
 		?> van <?=$type?><?php
 	} 
+	if ($entity_type == 'LESGROEP' || $entity_type == 'STAMKLAS') { ?>
+</form>
+<?php	}
+
 ?>
 <p><table id="rooster"><tr><th></th>
 <th>ma <?php echo date("j-n", $thismonday)          ?></th>
