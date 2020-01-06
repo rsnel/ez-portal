@@ -1,4 +1,5 @@
 config_*.php
 !config_SAMPLE.php
 test_ovc.php
+test_echhp.php
 .*.swp

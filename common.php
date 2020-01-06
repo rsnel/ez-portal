@@ -436,6 +436,7 @@ function get_access_info() {
 function update_weeks() {
 	$sisys = db_all_assoc_rekey('SELECT sisy_id, sisy_year FROM sisys');
 	foreach ($sisys as $sisy_id => $sisy_year) {
+		if (!$sisy_year) continue;
 		update_weeks_of_sisy($sisy_id, $sisy_year);
 	}
 }
@@ -535,7 +536,7 @@ function generate_pairs($week_id, $rooster_version) {
 		EOQ);
 
         $pairs = db_all_assoc_rekey(<<<EOQ
-		SELECT log_id, appointment_id, pair_id
+		SELECT log_id, appointment_id, pair_id, paired_log_id
 		FROM pairs
 		WHERE rooster_version_created <= $rooster_version
 		AND rooster_version_deleted > $rooster_version AND week_id = $week_id
@@ -563,7 +564,7 @@ function generate_pairs($week_id, $rooster_version) {
 					VALUES ( ?, ?, ?, ?, ? )
 					EOQ, $week_id, $rooster_version, $a['id'], $b['id'],
 					$b['appointment_id']);
-                        } else if ($pairs[$b['id']]['appointment1_id'] == $a['id']) {
+                        } else if ($pairs[$b['id']]['paired_log_id'] == $a['id']) {
                                 // ok, already available
                         } else {
 				// soft-overwrite old pair
@@ -1297,7 +1298,7 @@ function merge_appointment_in_week($a, &$rooster_version, $week_id, &$rooster_id
 		// we must hide an appointment, we do that like this
 		open_new_schedule_version_if_needed($week_id, $rooster_id, $rooster_version);
 
-		if ($prev_log_id) db_exec(<<<EOQ
+		db_exec(<<<EOQ
 			UPDATE log SET rooster_version_deleted = $rooster_version
 			WHERE log_id = {$old_appointment['log_id']}
 			EOQ);
