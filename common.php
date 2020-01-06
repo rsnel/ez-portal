@@ -697,10 +697,10 @@ function master_query($entity_ids, $kind, $rooster_version,
 	} else if ($kind == 'groups' || $kind == 'subjects' ||
 			$kind == 'teachers' || $kind == 'locations') {
 			$join = <<<EOJ
-				JOIN entities2egrps AS students2week
-				ON students2week.egrp_id = f_a.{$kind}_egrp_id\n
+				JOIN entities2egrps AS {$kind}2week
+				ON {$kind}2week.egrp_id = f_a.{$kind}_egrp_id\n
 				EOJ;
-		$where = " AND students2week.entity_id IN ( $entity_ids )";
+		$where = " AND {$kind}2week.entity_id IN ( $entity_ids )";
 	} else fatal("impossible value of \$kind");
 
 	if ($estgrps_id) {
