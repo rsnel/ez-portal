@@ -643,6 +643,8 @@ basisgroepen uit week <?=$estgrps_pversion_info['week']?>/v<?=$estgrps_pversion_
 <?php } ?>
 deelnames v<?=$participations_version?>/<?=$pversion_info['last_modified']?>,
 laatste synchronisatie <?=$weeks[$week_id]['last_sync']?>.
-<a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>
+<a href="forget_access_token.php">[cookie van <?=$access_info['entity_name']?> verwijderen]</a>,
+<?php $hash = md5(config('PERMALINK_SECRET').$access_info['access_token']); ?> persoonlijk link:
+<a href="permalink.php?access_id=<?=$access_info['access_id']?>&amp;hash=<?=$hash?>">ez-portal.nl/ovc</a>
 </span>
 <?php html_end(); ?>

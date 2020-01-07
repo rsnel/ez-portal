@@ -23,7 +23,7 @@ echo("updating categories\n");
 update_categories();
 echo("updating groups\n");
 update_groups();
-recapitalize_lesgroepen();
+//recapitalize_lesgroepen();
 echo("updating rooms\n");
 update_rooms();
 echo("updating weeks\n");
