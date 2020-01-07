@@ -1081,7 +1081,8 @@ function update_appointments_in_week($week) {
 	}
 
 	if ($schedule_open) {
-		// couple estgrp !
+		$estgrps_id = find_optimal_estgrp_for_week($week['week_id']);
+		if ($estgrps_id) couple_estgrps_to_rooster($rooster_id, $estgrps_id, true);
 	}
 
 	if (!$schedule_open && !$participations_open) {
@@ -1111,6 +1112,25 @@ function update_appointments_in_week($week) {
 			WHERE pversion_id = ? AND rooster_id = ?
 			EOQ, $week_last_sync, $pversion_id, $rooster_id);
 	}
+}
+
+function find_optimal_estgrp_for_week($week_id) {
+	$year = db_single_field("SELECT year FROM weeks WHERE week_id = ?", $week_id);
+	$week = db_single_field("SELECT week FROM weeks WHERE week_id = ?", $week_id);
+	if (!$year || !$week) fatal("week week_id=$week_id is broken");
+	$stuff = db_single_field(<<<EOQ
+		SELECT MAX(pversion_id) FROM pversions
+		JOIN weeks USING (week_id)
+		JOIN estgrps USING (pversion_id)
+		WHERE ma = 1 AND di = 1 AND wo = 1 AND do = 1 AND vr = 1
+		AND (year > $year OR ( year = $year AND week > $week) )
+		GROUP BY week_id
+		ORDER BY year, week
+		EOQ);
+	$estgrp_id = db_single_field("SELECT estgrps_id FROM estgrps WHERE pversion_id = ?",
+		$stuff);
+
+	return $estgrp_id;
 }
 
 function merge_appointments_in_week($json, &$rooster_version, $week_id,
@@ -1605,7 +1625,7 @@ function mk_estgrp_in_bos($estgrps_id, $week_id, $participations_version, $bos_i
 	}
 }
 
-function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
+function couple_estgrps_to_rooster($rooster_id, $estgrps_id, $allow_unfinalized_rooster = false) {
 	$estgrps = db_single_row("SELECT * FROM estgrps JOIN pversions USING (pversion_id) WHERE estgrps_id = ?", $estgrps_id);
 	if (!$estgrps) fatal("unknown etsgrps");
 	print_r($estgrps);
@@ -1630,7 +1650,7 @@ function couple_estgrps_to_rooster($rooster_id, $estgrps_id) {
 	print_r($rooster_version_info);
 	if ($rooster_version_info['version'] == 0) fatal("rooster not found");
 	$rooster_version = $rooster_version_info['version'];
-	if (!$rooster_version_info['ok']) fatal('rooster broken');
+	if (!$rooster_version_info['ok'] && !$allow_unfinalized_rooster) fatal('rooster broken');
 
 	$groupsstudents = db_all_assoc_rekey(<<<EOQ
 		SELECT groups_egrp_id, students_egrp_id FROM participations
