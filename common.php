@@ -989,7 +989,7 @@ function update_appointments_in_week($week) {
 
 	if ($highest_version_in_log > $rooster_version) {
 		fatal("found log records with version $highest_version_in_log, ".
-			"while the current version of the schedule is $rooster_version");
+			"while the current version of the schedule is $rooster_version (week_id={$week['week_id']})");
 	} else if ($highest_version_in_log < $rooster_version) {
 		fatal("found no records with current version $rooster_version, ".
 			"highest version number found is $highest_version_in_log");
